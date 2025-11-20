@@ -1,133 +1,143 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TextInput,
-  Button,
   TouchableOpacity,
   Alert,
   SafeAreaView,
-  Keyboard 
+  Keyboard
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as Progress from 'react-native-progress'; 
+import * as Progress from 'react-native-progress';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
-// Use hooks from expo-router
-import { useFocusEffect, useLocalSearchParams, useRouter, Stack } from 'expo-router'; 
+import { useFocusEffect, useLocalSearchParams, useRouter, Stack } from 'expo-router';
+import { useGoalsData } from '../../../hooks/useGoalsData';
+import { Colors } from '../../../constants/Colors';
 
-// (Keep the getWeeksBetweenDates helper function as defined previously)
+// Helper to calculate weeks
 const getWeeksBetweenDates = (startDateStr, endDateStr) => {
-    const weeks = {};
-    let currentWeekStart = new Date(startDateStr + 'T00:00:00Z');
-    const endDate = new Date(endDateStr + 'T00:00:00Z');
-    let weekIndex = 0;
+  const weeks = {};
+  let currentWeekStart = new Date(startDateStr + 'T00:00:00Z');
+  const endDate = new Date(endDateStr + 'T00:00:00Z');
+  let weekIndex = 0;
 
-    while (currentWeekStart <= endDate) {
-        const weekEndDate = new Date(currentWeekStart);
-        weekEndDate.setUTCDate(weekEndDate.getUTCDate() + 6);
-        const actualEndDate = weekEndDate > endDate ? endDate : weekEndDate;
-        const weekKey = `week_${weekIndex}`;
-        weeks[weekKey] = {
-            startDate: currentWeekStart.toISOString().split('T')[0],
-            endDate: actualEndDate.toISOString().split('T')[0],
-            tasks: [] 
-        };
-        weekIndex++;
-        currentWeekStart.setUTCDate(currentWeekStart.getUTCDate() + 7);
-    }
-    return weeks;
+  while (currentWeekStart <= endDate) {
+    const weekEndDate = new Date(currentWeekStart);
+    weekEndDate.setUTCDate(weekEndDate.getUTCDate() + 6);
+    const actualEndDate = weekEndDate > endDate ? endDate : weekEndDate;
+    const weekKey = `week_${weekIndex}`;
+    weeks[weekKey] = {
+      startDate: currentWeekStart.toISOString().split('T')[0],
+      endDate: actualEndDate.toISOString().split('T')[0],
+      tasks: []
+    };
+    weekIndex++;
+    currentWeekStart.setUTCDate(currentWeekStart.getUTCDate() + 7);
+  }
+  return weeks;
 };
 
-// Removed navigation/route props
-const GoalDetailScreen = () => { 
-  // Get goalId from local search params (Expo Router)
-  const { goalId } = useLocalSearchParams(); 
+const GoalDetailScreen = () => {
+  const { goalId } = useLocalSearchParams();
   const router = useRouter();
+  const { goals, updateGoal, getGoalById } = useGoalsData();
+
   const [goal, setGoal] = useState(null);
-  const [newTaskTexts, setNewTaskTexts] = useState({}); 
+  const [newTaskTexts, setNewTaskTexts] = useState({});
   const [loading, setLoading] = useState(true);
 
-  // Add router to dependency array if using it in effect (like for setOptions)
+  // Load goal data from the hook
   useFocusEffect(
     useCallback(() => {
-       let isActive = true; // Flag to prevent state updates if component unmounted
+      if (!goalId) {
+        if (router.canGoBack()) router.back();
+        return;
+      }
 
-       async function fetchGoalDetails() {
-           if (!goalId) {
-               Alert.alert("Error", "Goal ID is missing.");
-               if(router.canGoBack()) router.back();
-               return;
-           }
-           setLoading(true);
-           try {
-             const storedGoals = await AsyncStorage.getItem('@goals');
-             if (storedGoals !== null) {
-               let goals = JSON.parse(storedGoals);
-               const goalIndex = goals.findIndex(g => g.id === goalId);
-               if (goalIndex !== -1) {
-                   let currentGoal = goals[goalIndex];
-                   let needsSave = false;
-                   if (!currentGoal.weeks || typeof currentGoal.weeks !== 'object' || Object.keys(currentGoal.weeks).length === 0) {
-                       console.log("Calculating/resetting weeks for goal:", currentGoal.name);
-                       currentGoal.weeks = getWeeksBetweenDates(currentGoal.startDate, currentGoal.endDate);
-                        goals[goalIndex] = currentGoal;
-                        needsSave = true; // Mark that we need to save the updated goals array
-                   } else {
-                       // Ensure task arrays exist (can be done without needing save)
-                       Object.keys(currentGoal.weeks).forEach(weekKey => {
-                           if (!currentGoal.weeks[weekKey].tasks) {
-                               currentGoal.weeks[weekKey].tasks = [];
-                           }
-                       });
-                   }
+      const currentGoal = getGoalById(goalId);
 
-                   if (needsSave) {
-                        await AsyncStorage.setItem('@goals', JSON.stringify(goals));
-                   }
-                   
-                   if (isActive) setGoal(currentGoal);
+      if (currentGoal) {
+        // Check if we need to initialize weeks or subgoals
+        let goalToUpdate = { ...currentGoal };
+        let needsUpdate = false;
 
-               } else { 
-                   Alert.alert("Error", "Goal not found."); 
-                   if(router.canGoBack()) router.back();
-                }
-             } else { 
-                 Alert.alert("Error", "No goals found."); 
-                 if(router.canGoBack()) router.back();
+        if ((!goalToUpdate.weeks || Object.keys(goalToUpdate.weeks).length === 0) && (!goalToUpdate.subgoals || goalToUpdate.subgoals.length === 0)) {
+          goalToUpdate.weeks = getWeeksBetweenDates(goalToUpdate.startDate, goalToUpdate.endDate);
+          needsUpdate = true;
+        } else {
+          // Ensure structure exists
+          if (goalToUpdate.weeks) {
+            Object.keys(goalToUpdate.weeks).forEach(weekKey => {
+              if (!goalToUpdate.weeks[weekKey].tasks) {
+                goalToUpdate.weeks[weekKey].tasks = [];
+                needsUpdate = true;
               }
-           } catch (e) { 
-               console.error(e); 
-               Alert.alert("Error", "Failed load."); 
-               if(router.canGoBack()) router.back();
-           } finally { 
-              if (isActive) setLoading(false); 
-           }
-       }
+            });
+          }
+          if (!goalToUpdate.subgoals) {
+            goalToUpdate.subgoals = [];
+            needsUpdate = true;
+          }
+        }
 
-       fetchGoalDetails();
+        if (needsUpdate) {
+          updateGoal(goalToUpdate);
+        }
 
-       return () => {
-           isActive = false; // Cleanup function to set flag on unmount
-       };
-    }, [goalId, router]) // Dependencies remain the same
+        setGoal(goalToUpdate);
+        setLoading(false);
+      } else {
+        // Goal might not be loaded yet if deep linking, or deleted
+        if (goals.length > 0) {
+          // If goals are loaded but this one isn't found
+          Alert.alert("Error", "Goal not found.");
+          if (router.canGoBack()) router.back();
+        }
+        // If goals are empty, they might still be loading in the hook
+      }
+    }, [goalId, goals, getGoalById, updateGoal, router])
   );
 
-  const saveGoalUpdates = useCallback(async (updatedGoal) => {
-      try {
-          const storedGoals = await AsyncStorage.getItem('@goals');
-          let goals = storedGoals ? JSON.parse(storedGoals) : [];
-          const goalIndex = goals.findIndex(g => g.id === updatedGoal.id);
-          if (goalIndex !== -1) {
-              goals[goalIndex] = updatedGoal;
-              await AsyncStorage.setItem('@goals', JSON.stringify(goals));
-          } else { Alert.alert("Error", "Save failed: Goal not found."); }
-      } catch (e) { console.error(e); Alert.alert("Error", "Failed to save updates."); }
-  }, []);
+  // Helper to rebuild parent weeks excluding subgoals
+  const rebuildParentWeeks = (goalObj) => {
+    if (!goalObj) return {};
+    const exclusions = (goalObj.subgoals || []).map((sg) => ({
+      start: sg.startDate,
+      end: sg.endDate,
+    })).sort((a, b) => new Date(a.start) - new Date(b.start));
 
-  // --- Task Management Functions ---
-  const handleAddTask = (weekKey) => {
+    const res = {};
+    let weekIdx = 0;
+    const pushSeg = (s, e) => {
+      const weeksSeg = getWeeksBetweenDates(s, e);
+      Object.keys(weeksSeg).forEach((wkKey) => {
+        res[`week_${weekIdx}`] = weeksSeg[wkKey];
+        weekIdx += 1;
+      });
+    };
+
+    let cur = new Date(goalObj.startDate + 'T00:00:00Z');
+    const end = new Date(goalObj.endDate + 'T00:00:00Z');
+
+    exclusions.forEach((ex) => {
+      const exStart = new Date(ex.start + 'T00:00:00Z');
+      const exEnd = new Date(ex.end + 'T00:00:00Z');
+      if (cur <= exStart) {
+        const segEnd = new Date(exStart);
+        segEnd.setUTCDate(segEnd.getUTCDate() - 1);
+        if (cur <= segEnd) pushSeg(cur.toISOString().split('T')[0], segEnd.toISOString().split('T')[0]);
+      }
+      cur = new Date(exEnd);
+      cur.setUTCDate(cur.getUTCDate() + 1);
+    });
+    if (cur <= end) pushSeg(cur.toISOString().split('T')[0], goalObj.endDate);
+    return res;
+  };
+
+  // --- Task Management ---
+  const handleAddTask = async (weekKey) => {
     const textToAdd = newTaskTexts[weekKey]?.trim();
     if (!textToAdd) {
       Alert.alert("Input Needed", "Please enter a task description.");
@@ -135,10 +145,13 @@ const GoalDetailScreen = () => {
     }
     const updatedGoal = { ...goal };
     const newTask = { id: Date.now().toString(), text: textToAdd, completed: false };
+
     if (!updatedGoal.weeks[weekKey].tasks) { updatedGoal.weeks[weekKey].tasks = []; }
     updatedGoal.weeks[weekKey].tasks.push(newTask);
-    setGoal(updatedGoal); 
-    saveGoalUpdates(updatedGoal);
+
+    setGoal(updatedGoal); // Optimistic UI update
+    await updateGoal(updatedGoal); // Persist
+
     setNewTaskTexts(prev => ({ ...prev, [weekKey]: '' }));
     Keyboard.dismiss();
   };
@@ -146,69 +159,90 @@ const GoalDetailScreen = () => {
   const handleDeleteTask = useCallback((weekKey, taskId) => {
     Alert.alert('Delete Task', 'Are you sure you want to delete this task?', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: () => {
-        const updatedGoal = { ...goal };
-        updatedGoal.weeks[weekKey].tasks = updatedGoal.weeks[weekKey].tasks.filter(task => task.id !== taskId);
-        setGoal(updatedGoal);
-        saveGoalUpdates(updatedGoal);
-      }}
+      {
+        text: 'Delete', style: 'destructive', onPress: async () => {
+          const updatedGoal = { ...goal };
+          updatedGoal.weeks[weekKey].tasks = updatedGoal.weeks[weekKey].tasks.filter(task => task.id !== taskId);
+          setGoal(updatedGoal);
+          await updateGoal(updatedGoal);
+        }
+      }
     ]);
-  }, [goal, saveGoalUpdates]);
+  }, [goal, updateGoal]);
 
-  const handleToggleTask = (weekKey, taskId) => {
+  const handleToggleTask = async (weekKey, taskId) => {
     const updatedGoal = { ...goal };
     const weekTasks = updatedGoal.weeks[weekKey].tasks;
     const taskIndex = weekTasks.findIndex(task => task.id === taskId);
     if (taskIndex !== -1) {
       weekTasks[taskIndex].completed = !weekTasks[taskIndex].completed;
-      setGoal(updatedGoal); 
-      saveGoalUpdates(updatedGoal);
-    } else { console.warn(`Task ${taskId} not found in week ${weekKey}`); }
+      setGoal(updatedGoal);
+      await updateGoal(updatedGoal);
+    }
   };
 
+  const handleDeleteSubGoal = useCallback((subId) => {
+    Alert.alert('Delete Sub-goal', 'Are you sure you want to delete this sub-goal?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete', style: 'destructive', onPress: async () => {
+          const updated = { ...goal };
+          updated.subgoals = (updated.subgoals || []).filter((sg) => sg.id !== subId);
+          // Recalculate parent weeks
+          updated.weeks = updated.subgoals.length > 0 ? rebuildParentWeeks(updated) : getWeeksBetweenDates(updated.startDate, updated.endDate);
+          setGoal(updated);
+          await updateGoal(updated);
+        }
+      }
+    ]);
+  }, [goal, updateGoal]);
 
-  // --- Calculation Functions (Keep existing logic) ---
-   // Calculate progress as the percentage of weeks where all tasks are completed (or 0 if no tasks)
-   const calculateProgress = useCallback(() => {
-        if (!goal || !goal.weeks) return 0;
-        const weekValues = Object.values(goal.weeks);
-        if (weekValues.length === 0) return 0;
-        let completedWeeks = 0;
-        weekValues.forEach(week => {
-            if (week.tasks && Array.isArray(week.tasks) && week.tasks.length > 0) {
-                const allCompleted = week.tasks.every(task => task.completed);
-                if (allCompleted) completedWeeks += 1;
-            }
+  // --- Calculations ---
+  const calculateProgress = useCallback((g = goal) => {
+    if (!g) return 0;
+    let total = 0;
+    let completed = 0;
+    const traverse = (obj) => {
+      if (obj.weeks) {
+        Object.values(obj.weeks).forEach(w => {
+          if (w.tasks && Array.isArray(w.tasks)) {
+            total += w.tasks.length;
+            completed += w.tasks.filter(t => t.completed).length;
+          }
         });
-        return completedWeeks / weekValues.length;
-   }, [goal]);
+      }
+      if (obj.subgoals && Array.isArray(obj.subgoals)) {
+        obj.subgoals.forEach(sg => traverse(sg));
+      }
+    };
+    traverse(g);
+    return total > 0 ? completed / total : 0;
+  }, [goal]);
 
-   const isWeekComplete = useCallback((weekKey) => {
-       if (!goal || !goal.weeks || !goal.weeks[weekKey] || !goal.weeks[weekKey].tasks) return false;
-       const tasks = goal.weeks[weekKey].tasks;
-       return tasks.length > 0 && tasks.every(task => task.completed);
-   }, [goal]);
+  const isWeekComplete = useCallback((weekKey) => {
+    if (!goal || !goal.weeks || !goal.weeks[weekKey] || !goal.weeks[weekKey].tasks) return false;
+    const tasks = goal.weeks[weekKey].tasks;
+    return tasks.length > 0 && tasks.every(task => task.completed);
+  }, [goal]);
 
   if (loading || !goal) {
     return (
       <View style={styles.loadingContainer}>
-         {/* Optionally set a dynamic title in the stack header */} 
-        <Stack.Screen options={{ title: 'Loading...' }} /> 
+        <Stack.Screen options={{ title: 'Loading...' }} />
         <Text>Loading Goal...</Text>
       </View>
     );
   }
 
   const formatDate = (dateStr) => {
-      return new Date(dateStr + 'T00:00:00Z').toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    return new Date(dateStr + 'T00:00:00Z').toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
   }
 
   return (
     <SafeAreaView style={styles.container}>
-       {/* Set the Stack Screen title dynamically once goal is loaded */}
-       <Stack.Screen options={{ title: goal.name }} />
+      <Stack.Screen options={{ title: goal.name }} />
       <ScrollView keyboardShouldPersistTaps="handled">
-        {/* HEADER CARD: Goal Name, Dates, Progress */}
+        {/* HEADER CARD */}
         <View style={styles.headerCard}>
           <Text style={styles.headerGoalName}>{goal.name}</Text>
           <Text style={styles.headerGoalDates}>{`${formatDate(goal.startDate)} - ${formatDate(goal.endDate)}`}</Text>
@@ -216,7 +250,7 @@ const GoalDetailScreen = () => {
             <Progress.Bar
               progress={calculateProgress()}
               width={null}
-              color="#27ae60"
+              color={Colors.palette.success}
               unfilledColor="#e0e0e0"
               borderWidth={0}
               height={16}
@@ -226,9 +260,33 @@ const GoalDetailScreen = () => {
             />
             <View style={styles.headerProgressPercentContainer}>
               <Text style={styles.headerProgressPercentText}>{`${Math.round(calculateProgress() * 100)}%`}</Text>
-              <MaterialCommunityIcons name="trophy" size={22} color="#FFD700" style={styles.headerTrophyIcon} />
+              <MaterialCommunityIcons name="trophy" size={22} color={Colors.palette.warning} style={styles.headerTrophyIcon} />
             </View>
           </View>
+        </View>
+
+        {/* SUB-GOALS SECTION */}
+        <View style={styles.subgoalSection}>
+          <View style={styles.subgoalHeaderRow}>
+            <Text style={styles.subgoalHeading}>Sub-goals</Text>
+            <TouchableOpacity onPress={() => router.push({ pathname: '/goals/addSub', params: { goalId: goal.id } })}>
+              <MaterialCommunityIcons name="plus-circle" size={24} color={Colors.palette.primary} />
+            </TouchableOpacity>
+          </View>
+          {(goal.subgoals || []).length === 0 && <Text style={styles.noSubgoalsText}>No sub-goals yet.</Text>}
+          {(goal.subgoals || []).map((sg) => {
+            const sgProgress = calculateProgress(sg);
+            return (
+              <TouchableOpacity key={sg.id} style={styles.subgoalCard}
+                onPress={() => router.push({ pathname: '/goals/subdetail', params: { goalId: goal.id, subGoalId: sg.id } })}
+                onLongPress={() => handleDeleteSubGoal(sg.id)}>
+                <Text style={styles.subgoalName}>{sg.name}</Text>
+                <Text style={styles.subgoalDates}>{`${formatDate(sg.startDate)} - ${formatDate(sg.endDate)}`}</Text>
+                <Progress.Bar progress={sgProgress} width={null} color={Colors.palette.success} unfilledColor="#e0e0e0" borderWidth={0} height={8} borderRadius={4} style={{ marginTop: 6 }} />
+                <Text style={styles.subgoalPercent}>{`${Math.round(sgProgress * 100)}%`}</Text>
+              </TouchableOpacity>
+            );
+          })}
         </View>
 
         {/* Weekly Sections */}
@@ -249,7 +307,7 @@ const GoalDetailScreen = () => {
                 <Progress.Bar
                   progress={weekProgress}
                   width={null}
-                  color={weekProgress === 1 ? '#27ae60' : '#ffa726'}
+                  color={weekProgress === 1 ? Colors.palette.success : '#ffa726'}
                   unfilledColor="#e0e0e0"
                   borderWidth={0}
                   height={8}
@@ -273,7 +331,7 @@ const GoalDetailScreen = () => {
                       </Text>
                     </TouchableOpacity>
                     <TouchableOpacity onPress={() => handleDeleteTask(weekKey, task.id)} style={{ marginLeft: 8, padding: 8 }}>
-                      <MaterialCommunityIcons name="delete-outline" size={22} color="#e74c3c" />
+                      <MaterialCommunityIcons name="delete-outline" size={22} color={Colors.palette.danger} />
                     </TouchableOpacity>
                   </View>
                 ))}
@@ -303,19 +361,17 @@ const GoalDetailScreen = () => {
   );
 };
 
-// Styles remain the same, except removed goalTitle style
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f6f8fa',
+    backgroundColor: Colors.palette.background,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#f6f8fa',
+    backgroundColor: Colors.palette.background,
   },
-  // HEADER CARD
   headerCard: {
     backgroundColor: '#fff',
     borderRadius: 18,
@@ -332,13 +388,13 @@ const styles = StyleSheet.create({
   headerGoalName: {
     fontSize: 26,
     fontWeight: 'bold',
-    color: '#2c3e50',
+    color: Colors.palette.textPrimary,
     marginBottom: 4,
     textAlign: 'center',
   },
   headerGoalDates: {
     fontSize: 15,
-    color: '#888',
+    color: Colors.palette.textSecondary,
     marginBottom: 18,
     textAlign: 'center',
   },
@@ -357,14 +413,61 @@ const styles = StyleSheet.create({
   headerProgressPercentText: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#27ae60',
+    color: Colors.palette.success,
     marginRight: 4,
   },
   headerTrophyIcon: {
     fontSize: 20,
     marginLeft: 0,
   },
-  // WEEK CARD
+  subgoalSection: {
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    padding: 16,
+    marginHorizontal: 18,
+    marginBottom: 16,
+    elevation: 2,
+  },
+  subgoalHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  subgoalHeading: {
+    fontSize: 17,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  subgoalCard: {
+    backgroundColor: '#f9f9f9',
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 10,
+  },
+  subgoalName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.palette.textPrimary,
+  },
+  subgoalDates: {
+    fontSize: 13,
+    color: '#555',
+    marginTop: 2,
+  },
+  subgoalPercent: {
+    alignSelf: 'flex-end',
+    marginTop: 4,
+    fontSize: 13,
+    fontWeight: 'bold',
+    color: Colors.palette.success,
+  },
+  noSubgoalsText: {
+    textAlign: 'center',
+    color: '#888',
+    fontStyle: 'italic',
+    marginVertical: 6,
+  },
   weekCard: {
     backgroundColor: '#fff',
     borderRadius: 14,
@@ -391,11 +494,10 @@ const styles = StyleSheet.create({
   },
   weekCardTick: {
     fontSize: 22,
-    color: '#27ae60',
+    color: Colors.palette.success,
     fontWeight: 'bold',
     marginLeft: 10,
   },
-  // TASKS
   taskItem: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -419,65 +521,65 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
   },
   checkboxCompleted: {
-    borderColor: '#27ae60',
+    borderColor: Colors.palette.success,
     backgroundColor: '#eafaf1',
-      marginRight: 12,
-      justifyContent: 'center',
-      alignItems: 'center',
+    marginRight: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   checkboxInner: {
-      width: 12,
-      height: 12,
-      backgroundColor: '#4CAF50',
-      borderRadius: 2,
+    width: 12,
+    height: 12,
+    backgroundColor: Colors.palette.success,
+    borderRadius: 2,
   },
   taskText: {
-      fontSize: 16,
-      color: '#444',
-      flex: 1, 
+    fontSize: 16,
+    color: '#444',
+    flex: 1,
   },
   taskTextCompleted: {
-      textDecorationLine: 'line-through',
-      color: '#aaa',
+    textDecorationLine: 'line-through',
+    color: '#aaa',
   },
   noTasksText: {
-      color: '#888',
-      fontStyle: 'italic',
-      textAlign: 'center',
-      paddingVertical: 15,
+    color: '#888',
+    fontStyle: 'italic',
+    textAlign: 'center',
+    paddingVertical: 15,
   },
   addTaskContainer: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      marginTop: 15,
-      borderTopWidth: 1,
-      borderTopColor: '#eee',
-      paddingTop: 15,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 15,
+    borderTopWidth: 1,
+    borderTopColor: '#eee',
+    paddingTop: 15,
   },
   taskInput: {
-      flex: 1,
-      borderWidth: 1,
-      borderColor: '#ccc',
-      paddingVertical: 8,
-      paddingHorizontal: 10,
-      borderRadius: 5,
-      marginRight: 10,
-      backgroundColor: '#fff',
-      fontSize: 15,
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#ccc',
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 5,
+    marginRight: 10,
+    backgroundColor: '#fff',
+    fontSize: 15,
   },
   addButton: {
-      backgroundColor: '#f4511e',
-      paddingHorizontal: 15,
-      paddingVertical: 9,
-      borderRadius: 5,
-      justifyContent: 'center',
-      alignItems: 'center',
+    backgroundColor: Colors.palette.primary,
+    paddingHorizontal: 15,
+    paddingVertical: 9,
+    borderRadius: 5,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   addButtonText: {
-      color: '#fff',
-      fontSize: 18,
-      fontWeight: 'bold',
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: 'bold',
   }
 });
 
-export default GoalDetailScreen; 
+export default GoalDetailScreen;

@@ -25,6 +25,14 @@ export default function GoalsLayout() {
             name="detail" // Corresponds to goals/detail.js (our GoalDetailScreen)
             options={{ title: 'Goal Details' }} // Title could be set dynamically later
         />
+        <Stack.Screen 
+            name="addSub" // Corresponds to goals/addSub.js
+            options={{ title: 'Add Sub-goal', presentation: 'modal' }}
+        />
+        <Stack.Screen 
+            name="subdetail" // Corresponds to goals/subdetail.js
+            options={{ title: 'Sub-goal Details' }}
+        />
     </Stack>
   );
 } 

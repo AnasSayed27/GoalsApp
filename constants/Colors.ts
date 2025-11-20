@@ -23,4 +23,17 @@ export const Colors = {
     tabIconDefault: '#9BA1A6',
     tabIconSelected: tintColorDark,
   },
+  // Standardized App Palette
+  palette: {
+    primary: '#f4511e', // Deep Orange
+    secondary: '#3498db', // Blue
+    success: '#2ecc71', // Green
+    warning: '#f1c40f', // Yellow
+    danger: '#e74c3c', // Red
+    neutral: '#95a5a6', // Grey
+    background: '#f8f9fa', // Light Grey Background
+    card: '#ffffff', // White Card
+    textPrimary: '#2c3e50', // Dark Blue/Grey Text
+    textSecondary: '#7f8c8d', // Muted Text
+  }
 };

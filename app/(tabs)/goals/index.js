@@ -1,74 +1,22 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  Button,
   FlatList,
   TouchableOpacity,
   SafeAreaView,
   Alert
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-// Use useFocusEffect from expo-router instead of react-navigation/native
-import { useFocusEffect, useRouter } from 'expo-router';
-import * as Progress from 'react-native-progress'; // Import progress bar
+import { useRouter } from 'expo-router';
+import * as Progress from 'react-native-progress';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
+import { useGoalsData } from '../../../hooks/useGoalsData';
+import { Colors } from '../../../constants/Colors';
 
-// Removed navigation prop, use useRouter hook instead
-const GoalsScreen = () => { 
-  const [goals, setGoals] = useState([]);
-  const router = useRouter(); // Expo Router's navigation hook
-
-  const loadGoals = useCallback(async () => {
-    try {
-      const storedGoals = await AsyncStorage.getItem('@goals');
-      if (storedGoals !== null) {
-        const parsedGoals = JSON.parse(storedGoals);
-        // Calculate progress for each goal and add it to the object
-        const goalsWithProgress = parsedGoals.map(goal => ({
-            ...goal,
-            progress: calculateGoalProgress(goal) // Calculate and store progress
-        }));
-        setGoals(goalsWithProgress);
-      } else {
-        setGoals([]); // Ensure goals is an empty array if nothing is stored
-      }
-    } catch (e) {
-      console.error("Failed to load goals.", e);
-      setGoals([]); // Set empty array on error
-    }
-  }, []);
-
-  // useFocusEffect remains largely the same, but import source changes
-  useFocusEffect(
-    useCallback(() => {
-      // Define the async function inside the callback
-      async function fetchGoals() {
-          try {
-            const storedGoals = await AsyncStorage.getItem('@goals');
-            if (storedGoals !== null) {
-              const parsedGoals = JSON.parse(storedGoals);
-              const goalsWithProgress = parsedGoals.map(goal => ({
-                  ...goal,
-                  progress: calculateGoalProgress(goal) 
-              }));
-              setGoals(goalsWithProgress);
-            } else {
-              setGoals([]);
-            }
-          } catch (e) {
-            console.error("Failed to load goals.", e);
-            setGoals([]);
-          }
-      }
-      
-      fetchGoals(); // Call the async function
-
-      // Optional cleanup function (if needed)
-      // return () => {}; 
-    }, []) // Keep dependencies minimal, loadGoals logic is inside
-  );
+const GoalsScreen = () => {
+  const router = useRouter();
+  const { goals, deleteGoal } = useGoalsData();
 
   const handleDeleteGoal = useCallback((goalId) => {
     Alert.alert(
@@ -79,37 +27,11 @@ const GoalsScreen = () => {
         {
           text: 'Delete',
           style: 'destructive',
-          onPress: async () => {
-            try {
-              const storedGoals = await AsyncStorage.getItem('@goals');
-              const goalsList = storedGoals ? JSON.parse(storedGoals) : [];
-              const updatedGoals = goalsList.filter(goal => goal.id !== goalId);
-              await AsyncStorage.setItem('@goals', JSON.stringify(updatedGoals));
-              setGoals(updatedGoals);
-            } catch (e) {
-              Alert.alert('Error', 'Failed to delete goal.');
-            }
-          },
+          onPress: () => deleteGoal(goalId),
         },
       ]
     );
-  }, []);
-
-  // Helper function to calculate progress for a single goal
-  const calculateGoalProgress = (goal) => {
-    if (!goal || !goal.weeks) return 0;
-    const weekValues = Object.values(goal.weeks);
-    if (weekValues.length === 0) return 0;
-    
-    let completedWeeks = 0;
-    weekValues.forEach(week => {
-        if (week.tasks && Array.isArray(week.tasks) && week.tasks.length > 0) {
-            const allCompleted = week.tasks.every(task => task.completed);
-            if (allCompleted) completedWeeks += 1;
-        }
-    });
-    return weekValues.length === 0 ? 0 : completedWeeks / weekValues.length;
-  };
+  }, [deleteGoal]);
 
   const renderGoalItem = ({ item }) => (
     <TouchableOpacity
@@ -119,13 +41,13 @@ const GoalsScreen = () => {
     >
       <Text style={styles.goalName}>{item.name}</Text>
       <Text style={styles.goalDates}>{`${item.startDate} - ${item.endDate}`}</Text>
-      
+
       {/* Progress Bar Section */}
       <View style={styles.progressBarSection}>
         <Progress.Bar
           progress={item.progress || 0}
           width={null}
-          color="#27ae60" // Vibrant green
+          color={Colors.palette.success}
           unfilledColor="#e0e0e0"
           borderWidth={0}
           height={14}
@@ -135,7 +57,7 @@ const GoalsScreen = () => {
         />
         <View style={styles.progressPercentContainer}>
           <Text style={styles.progressPercentText}>{`${Math.round((item.progress || 0) * 100)}%`}</Text>
-          <MaterialCommunityIcons name="trophy" size={20} color="#FFD700" style={styles.trophyIcon} />
+          <MaterialCommunityIcons name="trophy" size={20} color={Colors.palette.warning} style={styles.trophyIcon} />
         </View>
       </View>
     </TouchableOpacity>
@@ -145,9 +67,9 @@ const GoalsScreen = () => {
     <SafeAreaView style={styles.container}>
       {goals.length === 0 ? (
         <View style={styles.emptyContainer}>
-           <Text style={styles.emptyText}>No goals yet. Add one!</Text>
+          <Text style={styles.emptyText}>No goals yet. Add one!</Text>
         </View>
-       
+
       ) : (
         <FlatList
           data={goals}
@@ -156,9 +78,9 @@ const GoalsScreen = () => {
           contentContainerStyle={styles.list}
         />
       )}
-      {/* Use Link for Add Goal button */}
+
       <TouchableOpacity style={styles.addButton} onPress={() => router.push('/goals/add')}>
-           <Text style={styles.addButtonText}>Add New Goal</Text>
+        <Text style={styles.addButtonText}>Add New Goal</Text>
       </TouchableOpacity>
     </SafeAreaView>
   );
@@ -167,30 +89,27 @@ const GoalsScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f0f0f0', 
+    backgroundColor: Colors.palette.background,
     padding: 10,
   },
   emptyContainer: {
-    flex: 1, 
+    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
   },
   emptyText: {
     fontSize: 18,
-    color: '#666',
+    color: Colors.palette.textSecondary,
   },
   list: {
-    paddingBottom: 10, // Space below the list before the button
+    paddingBottom: 10,
   },
   goalItem: {
-    backgroundColor: '#fff',
+    backgroundColor: Colors.palette.card,
     padding: 15,
     borderRadius: 8,
     shadowColor: "#000",
-    shadowOffset: {
-        width: 0,
-        height: 1,
-    },
+    shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.15,
     shadowRadius: 3,
     elevation: 3,
@@ -200,11 +119,12 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
     marginBottom: 5,
+    color: Colors.palette.textPrimary,
   },
   goalDates: {
     fontSize: 14,
-    color: '#555',
-    marginBottom: 10, // Add space before progress bar
+    color: Colors.palette.textSecondary,
+    marginBottom: 10,
   },
   progressBarSection: {
     marginTop: 12,
@@ -221,25 +141,25 @@ const styles = StyleSheet.create({
   progressPercentText: {
     fontSize: 14,
     fontWeight: 'bold',
-    color: '#333',
+    color: Colors.palette.textPrimary,
     marginRight: 4,
   },
   trophyIcon: {
     marginLeft: 2,
   },
   addButton: {
-    backgroundColor: '#f4511e',
+    backgroundColor: Colors.palette.primary,
     paddingVertical: 12,
     paddingHorizontal: 20,
     borderRadius: 5,
     alignItems: 'center',
-    marginTop: 10, // Space above the button
+    marginTop: 10,
   },
   addButtonText: {
-      color: '#fff',
-      fontSize: 16,
-      fontWeight: 'bold',
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
   }
 });
 
-export default GoalsScreen; 
+export default GoalsScreen;
