@@ -12,7 +12,9 @@ const getStartOfWeekUTC = (date) => {
     const dt = new Date(date.getTime());
     dt.setUTCHours(0, 0, 0, 0);
     const dayOfWeek = dt.getUTCDay();
-    const diff = dt.getUTCDate() - dayOfWeek;
+    // Adjust for Monday start: Sunday (0) becomes 6, Monday (1) becomes 0
+    const mondayDiff = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+    const diff = dt.getUTCDate() - mondayDiff;
     dt.setUTCDate(diff);
     return dt;
 };
@@ -154,7 +156,7 @@ export const StreakHeader = ({ currentStreak, longestStreak }) => (
     </View>
 );
 
-export const StatsOverview = ({ thisWeekScore, thisWeekHours, monthlyScore, consistencyScore, avgIntensity, trendPercentage }) => {
+export const StatsOverview = ({ thisWeekScore, thisWeekHours, thisWeekAvg, monthlyScore, consistencyScore, avgIntensity, trendPercentage }) => {
     // Dynamic Color Logic
     const trendIsPositive = trendPercentage >= 0;
     const trendColor = trendIsPositive ? '#2ecc71' : '#e74c3c';
@@ -172,7 +174,7 @@ export const StatsOverview = ({ thisWeekScore, thisWeekHours, monthlyScore, cons
                 <View style={styles.statBox}>
                     <Ionicons name="calendar-outline" size={24} color="#3498db" />
                     <Text style={styles.statNumber}>{thisWeekScore} / 7</Text>
-                    <Text style={styles.statSubtext}>{thisWeekHours.toFixed(1)} hrs</Text>
+                    <Text style={styles.statSubtext}>{thisWeekAvg.toFixed(1)} Hrs / Day</Text>
                     <Text style={styles.statLabel}>This Week</Text>
                 </View>
                 <View style={styles.statBox}>
@@ -202,16 +204,16 @@ export const StatsOverview = ({ thisWeekScore, thisWeekHours, monthlyScore, cons
     );
 };
 
-export const HeatmapGrid = ({ heatmapData, onDayPress }) => {
+export const HeatmapGrid = ({ heatmapData, onDayPress, numWeeks = NUM_WEEKS_TO_SHOW, title = "Activity Heatmap" }) => {
     const generateHeatmapGridUIData = () => {
         const gridRows = [];
         const todayNormalized = new Date();
         todayNormalized.setUTCHours(0, 0, 0, 0);
 
         let currentWeekStartDate = getStartOfWeekUTC(todayNormalized);
-        currentWeekStartDate.setUTCDate(currentWeekStartDate.getUTCDate() - (NUM_WEEKS_TO_SHOW - 1) * 7);
+        currentWeekStartDate.setUTCDate(currentWeekStartDate.getUTCDate() - (numWeeks - 1) * 7);
 
-        for (let weekIndex = 0; weekIndex < NUM_WEEKS_TO_SHOW; weekIndex++) {
+        for (let weekIndex = 0; weekIndex < numWeeks; weekIndex++) {
             let weekCells = [];
             for (let dayIndexInWeek = 0; dayIndexInWeek < 7; dayIndexInWeek++) {
                 const cellDate = new Date(currentWeekStartDate.getTime());
@@ -236,7 +238,7 @@ export const HeatmapGrid = ({ heatmapData, onDayPress }) => {
         if (gridRows.length > 0 && gridRows[0].length === 7) {
             for (let dayOfWeek = 0; dayOfWeek < 7; dayOfWeek++) {
                 let dayColumnCells = [];
-                for (let weekIdx = 0; weekIdx < NUM_WEEKS_TO_SHOW; weekIdx++) {
+                for (let weekIdx = 0; weekIdx < numWeeks; weekIdx++) {
                     dayColumnCells.push(gridRows[weekIdx][dayOfWeek]);
                 }
                 transposedGrid.push(dayColumnCells);
@@ -246,31 +248,31 @@ export const HeatmapGrid = ({ heatmapData, onDayPress }) => {
     };
 
     const transposedGridData = generateHeatmapGridUIData();
-    const dayLabels = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+    const dayLabels = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 
     // Dynamic sizing
     const horizontalPadding = 20; // Approximate padding
     const dayLabelWidth = 25;
     const gap = 5;
     const availableWidth = screenWidth - (horizontalPadding * 2) - dayLabelWidth - gap - 10;
-    const cellWidth = Math.max(12, Math.floor(availableWidth / NUM_WEEKS_TO_SHOW));
+    const cellWidth = Math.max(12, Math.floor(availableWidth / (numWeeks > 10 ? 12 : numWeeks))); // Limit cell width calculation base
     const cellHeight = cellWidth;
 
     return (
         <View style={styles.heatmapSectionContainer}>
-            <Text style={styles.heatmapTitle}>Activity Heatmap</Text>
+            <Text style={styles.heatmapTitle}>{title}</Text>
             <View style={styles.gridOuterContainer}>
                 <View style={[styles.dayLabelsColumn, { height: (cellHeight + 4) * 7 - 4 }]}>
                     {dayLabels.map((label, index) => (
                         <Text key={`label-${index}`} style={[styles.dayLabelText, { height: cellHeight, lineHeight: cellHeight }]}>
-                            {index % 2 !== 0 ? label : ''}
+                            {index % 2 === 0 ? label : ''}
                         </Text>
                     ))}
                 </View>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.gridScrollView}>
                     <View style={styles.gridInnerContainer}>
                         {transposedGridData[0].map((_, weekIndex) => (
-                            <View key={`weekcol-${weekIndex}`} style={[styles.weekColumn, { marginRight: weekIndex < NUM_WEEKS_TO_SHOW - 1 ? 4 : 0 }]}>
+                            <View key={`weekcol-${weekIndex}`} style={[styles.weekColumn, { marginRight: weekIndex < numWeeks - 1 ? 4 : 0 }]}>
                                 {transposedGridData.map((dayRow, dayIndex) => {
                                     const cell = dayRow[weekIndex];
                                     if (!cell) return <View key={`empty-${weekIndex}-${dayIndex}`} style={[styles.dayCell, { width: cellWidth, height: cellHeight, backgroundColor: '#f0f0f0' }]} />;
@@ -358,6 +360,97 @@ export const LogHoursModal = ({ visible, onClose, onSave, dateStr, currentHours 
                         <Text style={styles.closeButtonText}>Cancel</Text>
                     </TouchableOpacity>
                 </View>
+            </View>
+        </Modal>
+    );
+};
+
+export const FullHistoryModal = ({ visible, onClose, heatmapData, onDayPress }) => {
+    // Calculate weeks needed to show all history
+    const dates = Object.keys(heatmapData).sort();
+    let numWeeks = 26; // Default to 6 months
+
+    if (dates.length > 0) {
+        const oldestDate = new Date(dates[0] + 'T00:00:00Z');
+        const today = new Date();
+        const diffInDays = Math.ceil((today.getTime() - oldestDate.getTime()) / (1000 * 60 * 60 * 24));
+        numWeeks = Math.max(26, Math.ceil(diffInDays / 7) + 1);
+    }
+
+    return (
+        <Modal
+            animationType="slide"
+            transparent={false}
+            visible={visible}
+            onRequestClose={onClose}
+        >
+            <View style={styles.fullHistoryContainer}>
+                <View style={styles.fullHistoryHeader}>
+                    <TouchableOpacity onPress={onClose} style={styles.backButton}>
+                        <Ionicons name="arrow-back" size={24} color="#333" />
+                    </TouchableOpacity>
+                    <Text style={styles.fullHistoryTitle}>Full History</Text>
+                    <View style={{ width: 24 }} />
+                </View>
+
+                <ScrollView contentContainerStyle={{ padding: 16 }}>
+                    <HeatmapGrid
+                        heatmapData={heatmapData}
+                        onDayPress={onDayPress}
+                        numWeeks={numWeeks}
+                        title="All Recorded Activity"
+                    />
+
+                    {/* Lifetime Statistics Section */}
+                    <Text style={styles.recentLogsTitle}>Lifetime Statistics</Text>
+                    <View style={styles.lifetimeStatsContainer}>
+                        <View style={styles.lifetimeStatCard}>
+                            <Ionicons name="calendar-outline" size={24} color="#3498db" />
+                            <Text style={styles.lifetimeStatValue}>{dates.length}</Text>
+                            <Text style={styles.lifetimeStatLabel}>Total Days</Text>
+                            <Text style={styles.lifetimeStatSub}>{dates[0] ? `From ${dates[0]}` : 'Tracked'}</Text>
+                        </View>
+                        <View style={styles.lifetimeStatCard}>
+                            <Ionicons name="time-outline" size={24} color="#2ecc71" />
+                            <Text style={styles.lifetimeStatValue}>
+                                {Object.values(heatmapData).reduce((acc, val) => acc + (val || 0), 0).toFixed(1)}
+                            </Text>
+                            <Text style={styles.lifetimeStatLabel}>Total Hours</Text>
+                            <Text style={styles.lifetimeStatSub}>{dates[0] ? `Since ${dates[0]}` : 'Logged'}</Text>
+                        </View>
+                    </View>
+                    <View style={styles.singleStatContainer}>
+                        <View style={[styles.lifetimeStatCard, { width: '60%' }]}>
+                            <Ionicons name="analytics-outline" size={24} color="#e67e22" />
+                            <Text style={styles.lifetimeStatValue}>
+                                {dates.length > 0 ? (Object.values(heatmapData).reduce((acc, val) => acc + (val || 0), 0) / dates.length).toFixed(1) : '0'}
+                            </Text>
+                            <Text style={styles.lifetimeStatLabel}>Daily Avg</Text>
+                            <Text style={styles.lifetimeStatSub}>Hours Per Day</Text>
+                        </View>
+                    </View>
+
+                    <Text style={styles.recentLogsTitle}>🏆 Top 3 Best Days</Text>
+                    {dates.length === 0 ? (
+                        <Text style={styles.noHistoryText}>No records found yet.</Text>
+                    ) : (
+                        dates
+                            .map(d => ({ date: d, hours: heatmapData[d] }))
+                            .sort((a, b) => b.hours - a.hours)
+                            .slice(0, 3)
+                            .map((item, index) => (
+                                <View key={`top-${index}`} style={styles.historyListItem}>
+                                    <View style={styles.historyListDateContainer}>
+                                        <Text style={styles.rankBadge}>{index + 1}</Text>
+                                        <Text style={styles.historyListDate}>{item.date}</Text>
+                                    </View>
+                                    <View style={[styles.historyListHoursBadge, { backgroundColor: getCellColor(item.hours, false) }]}>
+                                        <Text style={styles.historyListHours}>{item.hours} hrs</Text>
+                                    </View>
+                                </View>
+                            ))
+                    )}
+                </ScrollView>
             </View>
         </Modal>
     );
@@ -795,5 +888,139 @@ const styles = StyleSheet.create({
         fontSize: 16,
         fontWeight: '600',
         color: '#7f8c8d',
+    },
+    // --- Full History Modal ---
+    fullHistoryContainer: {
+        flex: 1,
+        backgroundColor: '#f8f9fa',
+    },
+    fullHistoryHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingTop: 15, // Added some padding back for balance
+        paddingBottom: 15,
+        paddingHorizontal: 20,
+        backgroundColor: '#fff',
+        borderBottomWidth: 1,
+        borderBottomColor: '#eee',
+    },
+    backButton: {
+        padding: 4,
+    },
+    fullHistoryTitle: {
+        fontSize: 20,
+        fontWeight: '800',
+        color: '#2c3e50',
+    },
+    historyLegendInfo: {
+        alignItems: 'center',
+        marginTop: 10,
+        marginBottom: 20,
+    },
+    historyLegendTitle: {
+        fontSize: 16,
+        fontWeight: '700',
+        color: '#2c3e50',
+    },
+    historyLegendSub: {
+        fontSize: 12,
+        color: '#95a5a6',
+    },
+    recentLogsTitle: {
+        fontSize: 18,
+        fontWeight: '800',
+        color: '#2c3e50',
+        marginTop: 20,
+        marginBottom: 16,
+    },
+    noHistoryText: {
+        textAlign: 'center',
+        color: '#95a5a6',
+        marginTop: 20,
+        fontStyle: 'italic',
+    },
+    historyListItem: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        backgroundColor: '#fff',
+        padding: 16,
+        borderRadius: 12,
+        marginBottom: 10,
+        borderWidth: 1,
+        borderColor: '#f0f0f0',
+    },
+    historyListDateContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+    },
+    historyListDate: {
+        fontSize: 15,
+        fontWeight: '600',
+        color: '#2c3e50',
+    },
+    historyListHoursBadge: {
+        paddingHorizontal: 10,
+        paddingVertical: 4,
+        borderRadius: 8,
+    },
+    historyListHours: {
+        fontSize: 13,
+        fontWeight: '700',
+        color: '#fff',
+    },
+    lifetimeStatsContainer: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        marginBottom: 12,
+    },
+    singleStatContainer: {
+        alignItems: 'center',
+        marginBottom: 20,
+    },
+    lifetimeStatCard: {
+        backgroundColor: '#fff',
+        borderRadius: 20,
+        padding: 18,
+        width: '48%',
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: '#f0f0f0',
+        elevation: 3,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.08,
+        shadowRadius: 10,
+    },
+    lifetimeStatValue: {
+        fontSize: 26,
+        fontWeight: '800',
+        color: '#2c3e50',
+        marginVertical: 4,
+    },
+    lifetimeStatLabel: {
+        fontSize: 12,
+        color: '#bdc3c7',
+        fontWeight: '800',
+        textTransform: 'uppercase',
+    },
+    lifetimeStatSub: {
+        fontSize: 10,
+        color: '#95a5a6',
+        marginTop: 2,
+    },
+    rankBadge: {
+        width: 24,
+        height: 24,
+        borderRadius: 12,
+        backgroundColor: '#f1c40f',
+        color: '#fff',
+        textAlign: 'center',
+        lineHeight: 24,
+        fontWeight: '800',
+        marginRight: 10,
+        fontSize: 12,
     },
 });

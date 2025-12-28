@@ -10,7 +10,7 @@ import {
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useStreaksData } from '../../hooks/useStreaksData';
-import { StreakHeader, StatsOverview, HeatmapGrid, LogHoursModal, TierCard } from '../../components/StreakComponents';
+import { StreakHeader, StatsOverview, HeatmapGrid, LogHoursModal, TierCard, FullHistoryModal } from '../../components/StreakComponents';
 
 const StreaksScreen = () => {
     const {
@@ -21,6 +21,7 @@ const StreaksScreen = () => {
         thisWeekScore,
         monthlyScore,
         thisWeekHours,
+        thisWeekAvg,
         avgIntensity,
         trendPercentage,
         levelInfo,
@@ -32,6 +33,7 @@ const StreaksScreen = () => {
     } = useStreaksData();
 
     const [modalVisible, setModalVisible] = useState(false);
+    const [fullHistoryVisible, setFullHistoryVisible] = useState(false);
     const [selectedDate, setSelectedDate] = useState('');
     const [currentHoursInput, setCurrentHoursInput] = useState('');
 
@@ -90,6 +92,13 @@ const StreaksScreen = () => {
                 currentHours={currentHoursInput}
             />
 
+            <FullHistoryModal
+                visible={fullHistoryVisible}
+                onClose={() => setFullHistoryVisible(false)}
+                heatmapData={heatmapData}
+                onDayPress={handleDayPress}
+            />
+
             <Text style={styles.header}>Activity Streaks</Text>
 
             <TierCard levelInfo={levelInfo} />
@@ -102,6 +111,7 @@ const StreaksScreen = () => {
             <StatsOverview
                 thisWeekScore={thisWeekScore}
                 thisWeekHours={thisWeekHours}
+                thisWeekAvg={thisWeekAvg}
                 monthlyScore={monthlyScore}
                 consistencyScore={consistencyScore}
                 avgIntensity={avgIntensity}
@@ -112,6 +122,14 @@ const StreaksScreen = () => {
                 heatmapData={heatmapData}
                 onDayPress={handleDayPress}
             />
+
+            <TouchableOpacity
+                style={styles.historyButton}
+                onPress={() => setFullHistoryVisible(true)}
+            >
+                <Ionicons name="time-outline" size={20} color="#3498db" />
+                <Text style={styles.historyButtonText}>View Full History</Text>
+            </TouchableOpacity>
 
             <TouchableOpacity
                 style={styles.clearButton}
@@ -175,6 +193,30 @@ const styles = StyleSheet.create({
         fontSize: 15,
         marginLeft: 8,
         fontWeight: '600',
+    },
+    historyButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#fff',
+        paddingVertical: 14,
+        paddingHorizontal: 20,
+        borderRadius: 16,
+        marginBottom: 20,
+        width: '100%',
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.05,
+        shadowRadius: 8,
+        elevation: 2,
+        borderWidth: 1,
+        borderColor: '#3498db',
+    },
+    historyButtonText: {
+        fontSize: 16,
+        fontWeight: '700',
+        color: '#3498db',
+        marginLeft: 8,
     },
 });
 

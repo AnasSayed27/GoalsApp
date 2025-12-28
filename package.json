@@ -42,6 +42,7 @@
     "react-native-calendar-heatmap": "^0.2.4",
     "react-native-calendars": "^1.1313.0",
     "react-native-confetti-cannon": "^1.5.2",
+    "react-native-draggable-flatlist": "^4.0.3",
     "react-native-gesture-handler": "~2.20.2",
     "react-native-progress": "^5.0.1",
     "react-native-reanimated": "~3.16.1",

@@ -26,6 +26,7 @@ export const useStreaksData = () => {
 
     // New Quantity Stats
     const [thisWeekHours, setThisWeekHours] = useState(0);
+    const [thisWeekAvg, setThisWeekAvg] = useState(0);
     const [avgIntensity, setAvgIntensity] = useState(0);
     const [trendPercentage, setTrendPercentage] = useState(0);
 
@@ -58,17 +59,8 @@ export const useStreaksData = () => {
             ? currentHeatmapData
             : {};
 
-        // Clean up old data - only keep data from the last 6 months
-        const cleanedHeatmapData = {};
-        const cutoffDate = new Date();
-        cutoffDate.setUTCMonth(cutoffDate.getUTCMonth() - 6);
-
-        Object.entries(validHeatmapData).forEach(([dateStr, hours]) => {
-            const entryDate = new Date(dateStr + 'T00:00:00Z');
-            if (entryDate >= cutoffDate) {
-                cleanedHeatmapData[dateStr] = hours;
-            }
-        });
+        // Heatmap data is now kept indefinitely
+        const cleanedHeatmapData = { ...validHeatmapData };
 
         // Filter for days with hours >= 2.5
         const datesWithSignificantHours = Object.keys(cleanedHeatmapData)
@@ -136,19 +128,35 @@ export const useStreaksData = () => {
         });
         setTotalDaysWon(totalWon);
 
-        // 2. This Week's Score (Days >= 2.5 this week)
+        // 2. This Week's Score (Days >= 2.5 this week, calculated up to yesterday)
         const today = new Date();
-        const startOfWeek = new Date(today);
-        startOfWeek.setUTCHours(0, 0, 0, 0);
+        const yesterday = new Date(today);
+        yesterday.setUTCDate(today.getUTCDate() - 1);
+        const todayStr = getUTCDateString(today);
+        const hoursToday = cleanedHeatmapData[todayStr] || 0;
+        const hasLoggedToday = hoursToday > 0;
+        const isTodayWin = hoursToday >= 2.5;
+
+        // Use today as end date if user has logged hours today, else use yesterday
+        const endDateForStats = hasLoggedToday ? today : yesterday;
+        endDateForStats.setUTCHours(0, 0, 0, 0); // Normalize endDateForStats to start of day UTC
+
+        // 2. This Week (Monday-Sunday)
+        const startOfWeek = new Date(endDateForStats); // Use endDateForStats for start of week calculation
         const dayOfWeek = startOfWeek.getUTCDay(); // 0 = Sunday
-        const diff = startOfWeek.getUTCDate() - dayOfWeek;
-        startOfWeek.setUTCDate(diff); // Start of week (Sunday)
+        // Adjust for Monday start: Sunday (0) becomes 6, Monday (1) becomes 0, etc.
+        const mondayDiff = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+        const diff = startOfWeek.getUTCDate() - mondayDiff;
+        startOfWeek.setUTCDate(diff); // Start of week (Monday)
 
         let weekWon = 0;
         let weekHours = 0;
+        // Count from start of week up to and including today/yesterday
         for (let i = 0; i < 7; i++) {
             const d = new Date(startOfWeek);
             d.setUTCDate(startOfWeek.getUTCDate() + i);
+            // Only count days up to the stats end date (today if logged, else yesterday)
+            if (d > endDateForStats) break;
             const dStr = getUTCDateString(d);
             if (cleanedHeatmapData[dStr]) {
                 if (cleanedHeatmapData[dStr] >= 2.5) {
@@ -160,20 +168,20 @@ export const useStreaksData = () => {
         setThisWeekScore(weekWon);
         setThisWeekHours(weekHours);
 
-        // 3. Monthly Score (Last 30 Days)
+        // 3. Monthly Score (Last 30 Days from end date)
         let monthWon = 0;
         let last7DaysHours = 0;
         let last7DaysCount = 0;
 
         for (let i = 0; i < 30; i++) {
-            const checkDate = new Date(today);
-            checkDate.setUTCDate(today.getUTCDate() - i);
+            const checkDate = new Date(endDateForStats);
+            checkDate.setUTCDate(endDateForStats.getUTCDate() - i);
             const dateStr = getUTCDateString(checkDate);
             if (cleanedHeatmapData[dateStr] && cleanedHeatmapData[dateStr] >= 2.5) {
                 monthWon++;
             }
 
-            // Avg Intensity (Last 7 Days)
+            // Last 7 Days from yesterday (for This Week Avg)
             if (i < 7) {
                 if (cleanedHeatmapData[dateStr]) {
                     last7DaysHours += cleanedHeatmapData[dateStr];
@@ -183,13 +191,27 @@ export const useStreaksData = () => {
         }
         setMonthlyScore(monthWon);
         setConsistencyScore(monthWon / 30);
-        setAvgIntensity(last7DaysCount > 0 ? last7DaysHours / last7DaysCount : 0);
+
+        // This Week Avg (Last 7 days average hrs/day from yesterday)
+        setThisWeekAvg(last7DaysHours / 7);
+
+        // Avg Intensity (Last 90 days average hrs/day)
+        let last90DaysHours = 0;
+        for (let i = 0; i < 90; i++) {
+            const checkDate = new Date(endDateForStats);
+            checkDate.setUTCDate(endDateForStats.getUTCDate() - i);
+            const dateStr = getUTCDateString(checkDate);
+            if (cleanedHeatmapData[dateStr]) {
+                last90DaysHours += cleanedHeatmapData[dateStr];
+            }
+        }
+        setAvgIntensity(last90DaysHours / 90);
 
         // 4. 7-Day Trend (vs Previous 7 Days)
         let previous7DaysHours = 0;
         for (let i = 7; i < 14; i++) {
-            const checkDate = new Date(today);
-            checkDate.setUTCDate(today.getUTCDate() - i);
+            const checkDate = new Date(endDateForStats);
+            checkDate.setUTCDate(endDateForStats.getUTCDate() - i);
             const dateStr = getUTCDateString(checkDate);
             if (cleanedHeatmapData[dateStr]) {
                 previous7DaysHours += cleanedHeatmapData[dateStr];
@@ -205,36 +227,38 @@ export const useStreaksData = () => {
         setTrendPercentage(trendPercentage);
 
         // --- Dynamic Tier System (Calendar Month) ---
-        const now = new Date();
-        const currentMonth = now.getUTCMonth();
-        const currentYear = now.getUTCFullYear();
-        // const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate(); // Not used currently
-        const dayOfMonth = now.getUTCDate(); // Days passed so far (1-31)
+        const lastDayOfMonth = endDateForStats.getUTCDate();
+        const monthMonth = endDateForStats.getUTCMonth();
+        const monthYear = endDateForStats.getUTCFullYear();
 
-        let monthDaysWon = 0;
-        let monthTotalHours = 0;
+        let monthDaysWonCount = 0;
+        let monthTotalHoursSum = 0;
 
-        // Iterate from 1st to today
-        for (let d = 1; d <= dayOfMonth; d++) {
-            const date = new Date(Date.UTC(currentYear, currentMonth, d));
+        // Iterate from 1st of month to endDateForStats (today if logged, else yesterday)
+        for (let d = 1; d <= lastDayOfMonth; d++) {
+            const date = new Date(Date.UTC(monthYear, monthMonth, d));
             const dateStr = getUTCDateString(date);
             const hours = cleanedHeatmapData[dateStr] || 0;
 
             if (hours >= 2.5) {
-                monthDaysWon++;
+                monthDaysWonCount++;
             }
-            monthTotalHours += hours;
+            monthTotalHoursSum += hours;
         }
 
+        // Safety Logic for Tier Score:
+        // Only include Today in the divisor/average calculation if it's already a win.
+        // This prevents the score from dropping at the start of a new day.
+        const daysToCountInDivisor = isTodayWin ? lastDayOfMonth : (hasLoggedToday ? lastDayOfMonth - 1 : lastDayOfMonth);
+        const winsToCountInScore = monthDaysWonCount; // This already includes today if isTodayWin is true
+
         // 1. Consistency Score (Max 60)
-        // Based on Win Rate so far this month
-        const monthWinRate = dayOfMonth > 0 ? monthDaysWon / dayOfMonth : 0;
-        const consistencyPoints = monthWinRate * 60;
+        const effectiveWinRate = daysToCountInDivisor > 0 ? winsToCountInScore / daysToCountInDivisor : 0;
+        const consistencyPoints = effectiveWinRate * 60;
 
         // 2. Intensity Score (Max 40)
-        // Target: 5 hours avg = Max Score
-        const avgHoursActive = monthDaysWon > 0 ? monthTotalHours / monthDaysWon : 0;
-        const intensityPoints = Math.min((avgHoursActive / 5) * 40, 40);
+        const effectiveAvgHours = winsToCountInScore > 0 ? monthTotalHoursSum / winsToCountInScore : 0;
+        const intensityPoints = Math.min((effectiveAvgHours / 5) * 40, 40);
 
         const totalScore = Math.round(consistencyPoints + intensityPoints);
 
@@ -262,8 +286,8 @@ export const useStreaksData = () => {
             details: {
                 consistency: Math.round(consistencyPoints),
                 intensity: Math.round(intensityPoints),
-                avgHours: avgHoursActive.toFixed(1),
-                winRate: Math.round(monthWinRate * 100)
+                avgHours: effectiveAvgHours.toFixed(1),
+                winRate: Math.round(effectiveWinRate * 100)
             }
         });
 
@@ -302,6 +326,7 @@ export const useStreaksData = () => {
         thisWeekScore,
         monthlyScore,
         thisWeekHours,
+        thisWeekAvg,
         avgIntensity,
         trendPercentage,
         levelInfo,
