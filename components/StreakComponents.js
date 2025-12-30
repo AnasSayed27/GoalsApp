@@ -430,26 +430,80 @@ export const FullHistoryModal = ({ visible, onClose, heatmapData, onDayPress }) 
                         </View>
                     </View>
 
-                    <Text style={styles.recentLogsTitle}>🏆 Top 3 Best Days</Text>
+                    {/* Journey Duration Section */}
+                    <View style={styles.trackingRangeContainer}>
+                        <Text style={styles.trackingRangeHeader}>Journey Duration</Text>
+                        <Text style={styles.trackingRangeText}>
+                            <Text style={styles.trackingRangeValues}>
+                                {(() => {
+                                    if (dates.length === 0) return '0';
+                                    const firstDate = new Date(dates[0]);
+                                    const today = new Date();
+                                    // Normalize both to UTC midnight for accurate day difference
+                                    const d1 = Date.UTC(firstDate.getUTCFullYear(), firstDate.getUTCMonth(), firstDate.getUTCDate());
+                                    const d2 = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
+                                    const diffMs = d2 - d1;
+                                    return Math.floor(diffMs / (1000 * 60 * 60 * 24)) + 1;
+                                })()}
+                            </Text> Days Since Start
+                        </Text>
+                        <Text style={styles.trackingRangeSub}>
+                            {dates[0] || 'N/A'} — {dates[dates.length - 1] || 'Today'}
+                        </Text>
+                    </View>
+
+                    <Text style={styles.recentLogsTitle}>🏆 Milestone Summary</Text>
                     {dates.length === 0 ? (
                         <Text style={styles.noHistoryText}>No records found yet.</Text>
-                    ) : (
-                        dates
-                            .map(d => ({ date: d, hours: heatmapData[d] }))
-                            .sort((a, b) => b.hours - a.hours)
-                            .slice(0, 3)
-                            .map((item, index) => (
-                                <View key={`top-${index}`} style={styles.historyListItem}>
-                                    <View style={styles.historyListDateContainer}>
-                                        <Text style={styles.rankBadge}>{index + 1}</Text>
-                                        <Text style={styles.historyListDate}>{item.date}</Text>
-                                    </View>
-                                    <View style={[styles.historyListHoursBadge, { backgroundColor: getCellColor(item.hours, false) }]}>
-                                        <Text style={styles.historyListHours}>{item.hours} hrs</Text>
-                                    </View>
+                    ) : (() => {
+                        const counts = {
+                            elite: 0,     // 6+
+                            workhorse: 0, // 5 <= h < 6
+                            solid: 0,     // 4 <= h < 5
+                            active: 0,    // 3 <= h < 4
+                            rest: 0       // < 3
+                        };
+
+                        const firstDate = new Date(dates[0]);
+                        const today = new Date();
+                        const totalDays = Math.floor((Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()) -
+                            Date.UTC(firstDate.getUTCFullYear(), firstDate.getUTCMonth(), firstDate.getUTCDate())) / (1000 * 60 * 60 * 24)) + 1;
+
+                        for (let i = 0; i < totalDays; i++) {
+                            const d = new Date(firstDate);
+                            d.setUTCDate(firstDate.getUTCDate() + i);
+
+                            // Get date string in YYYY-MM-DD format for lookup
+                            const dStr = d.toISOString().split('T')[0];
+                            const h = heatmapData[dStr] || 0;
+
+                            if (h >= 6) counts.elite++;
+                            else if (h >= 5) counts.workhorse++;
+                            else if (h >= 4) counts.solid++;
+                            else if (h >= 3) counts.active++;
+                            else counts.rest++;
+                        }
+
+                        const milestoneList = [
+                            { label: 'Elite (6+ hrs)', count: counts.elite, color: '#f1c40f', icon: 'flash' },
+                            { label: 'Workhorse (5+ hrs)', count: counts.workhorse, color: '#e67e22', icon: 'construct' },
+                            { label: 'Solid (4+ hrs)', count: counts.solid, color: '#3498db', icon: 'trending-up' },
+                            { label: 'Active (3+ hrs)', count: counts.active, color: '#2ecc71', icon: 'walk' },
+                            { label: 'Low/Rest (< 3 hrs)', count: counts.rest, color: '#95a5a6', icon: 'cafe' }
+                        ];
+
+                        return milestoneList.map((m, idx) => (
+                            <View key={`milestone-${idx}`} style={styles.historyListItem}>
+                                <View style={styles.historyListDateContainer}>
+                                    <Ionicons name={m.icon} size={20} color={m.color} style={{ marginRight: 12 }} />
+                                    <Text style={styles.milestoneLabel}>{m.label}</Text>
                                 </View>
-                            ))
-                    )}
+                                <View style={[styles.milestoneBadge, { backgroundColor: m.color }]}>
+                                    <Text style={styles.milestoneCount}>{m.count} days</Text>
+                                </View>
+                            </View>
+                        ));
+                    })()}
                 </ScrollView>
             </View>
         </Modal>
@@ -1011,16 +1065,54 @@ const styles = StyleSheet.create({
         color: '#95a5a6',
         marginTop: 2,
     },
-    rankBadge: {
-        width: 24,
-        height: 24,
-        borderRadius: 12,
-        backgroundColor: '#f1c40f',
-        color: '#fff',
-        textAlign: 'center',
-        lineHeight: 24,
+    milestoneLabel: {
+        fontSize: 15,
+        fontWeight: '600',
+        color: '#2c3e50',
+    },
+    milestoneBadge: {
+        paddingVertical: 6,
+        paddingHorizontal: 12,
+        borderRadius: 20,
+        minWidth: 80,
+        alignItems: 'center',
+    },
+    milestoneCount: {
+        fontSize: 13,
         fontWeight: '800',
-        marginRight: 10,
+        color: '#fff',
+    },
+    trackingRangeContainer: {
+        backgroundColor: '#fff',
+        borderRadius: 16,
+        padding: 16,
+        marginBottom: 24,
+        borderWidth: 1,
+        borderColor: '#f0f0f0',
+        alignItems: 'center',
+        elevation: 1,
+    },
+    trackingRangeHeader: {
         fontSize: 12,
+        color: '#bdc3c7',
+        fontWeight: '800',
+        textTransform: 'uppercase',
+        marginBottom: 4,
+    },
+    trackingRangeText: {
+        fontSize: 18,
+        color: '#7f8c8d',
+        fontWeight: '600',
+    },
+    trackingRangeValues: {
+        color: '#2c3e50',
+        fontWeight: '900',
+        fontSize: 22,
+    },
+    trackingRangeSub: {
+        fontSize: 13,
+        color: '#95a5a6',
+        marginTop: 4,
+        fontWeight: '500',
     },
 });
