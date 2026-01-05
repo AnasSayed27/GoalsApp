@@ -23,10 +23,10 @@ const getCellColor = (hours, isFuture) => {
     if (isFuture) return '#f0f0f0';
     if (hours === undefined || hours === null) return '#e0e0e0';
     if (hours === 0) return '#e0e0e0';
-    if (hours > 0 && hours <= 2) return '#e74c3c';
-    if (hours > 2 && hours <= 3.5) return '#ffa726';
-    if (hours > 3.5 && hours <= 5) return '#90ee90';
-    if (hours > 5) return '#006400';
+    if (hours > 0 && hours <= 2) return '#f87171'; // Softer Red
+    if (hours > 2 && hours <= 3.5) return '#fbbf24'; // Amber (Less aggressive)
+    if (hours > 3.5 && hours <= 5) return '#4ade80'; // Vibrant Green (More prominent)
+    if (hours > 5) return '#166534'; // Rich Deep Green
     return '#e0e0e0';
 };
 
@@ -365,17 +365,123 @@ export const LogHoursModal = ({ visible, onClose, onSave, dateStr, currentHours 
     );
 };
 
-export const FullHistoryModal = ({ visible, onClose, heatmapData, onDayPress }) => {
-    // Calculate weeks needed to show all history
-    const dates = Object.keys(heatmapData).sort();
-    let numWeeks = 26; // Default to 6 months
+const generateQuarters = (startDateStr) => {
+    if (!startDateStr) return [{ label: 'All Time', start: null, end: null }];
 
+    // Ensure we parse correctly without TZ issues
+    const firstDate = new Date(startDateStr + 'T00:00:00Z');
+    const today = new Date();
+    const intervals = [{ label: 'All Time', start: null, end: null }];
+
+    let currentYear = firstDate.getUTCFullYear();
+    let currentQuarter = Math.floor(firstDate.getUTCMonth() / 3); // 0-3
+
+    const quarters = [
+        { label: 'Jan-Mar', startMonth: 0, endMonth: 2 },
+        { label: 'Apr-Jun', startMonth: 3, endMonth: 5 },
+        { label: 'Jul-Sep', startMonth: 6, endMonth: 8 },
+        { label: 'Oct-Dec', startMonth: 9, endMonth: 11 }
+    ];
+
+    const todayYear = today.getUTCFullYear();
+    const todayQuarter = Math.floor(today.getUTCMonth() / 3);
+
+    let y = currentYear;
+    let q = currentQuarter;
+
+    while (y < todayYear || (y === todayYear && q <= todayQuarter)) {
+        const quarterInfo = quarters[q];
+        const start = new Date(Date.UTC(y, quarterInfo.startMonth, 1));
+        const end = new Date(Date.UTC(y, quarterInfo.endMonth + 1, 0, 23, 59, 59, 999));
+
+        intervals.push({
+            label: `${quarterInfo.label} ${y}`,
+            start,
+            end
+        });
+
+        q++;
+        if (q > 3) {
+            q = 0;
+            y++;
+        }
+    }
+
+    return intervals.reverse(); // Show newest first
+};
+
+export const FullHistoryModal = ({ visible, onClose, heatmapData, onDayPress }) => {
+    const dates = Object.keys(heatmapData).sort();
+    const [selectedRange, setSelectedRange] = useState({ label: 'All Time', start: null, end: null });
+    const [pickerVisible, setPickerVisible] = useState(false);
+    const intervals = generateQuarters(dates[0]);
+
+    // Calculate weeks needed to show all history
+    let numWeeks = 26; // Default to 6 months
     if (dates.length > 0) {
         const oldestDate = new Date(dates[0] + 'T00:00:00Z');
         const today = new Date();
         const diffInDays = Math.ceil((today.getTime() - oldestDate.getTime()) / (1000 * 60 * 60 * 24));
         numWeeks = Math.max(26, Math.ceil(diffInDays / 7) + 1);
     }
+
+    // Filter dates based on selected range
+    const filteredDates = dates.filter(d => {
+        if (!selectedRange.start) return true;
+        const dt = new Date(d + 'T00:00:00Z');
+        return dt >= selectedRange.start && dt <= selectedRange.end;
+    });
+
+    const totalHours = Object.keys(heatmapData)
+        .filter(d => {
+            if (!selectedRange.start) return true;
+            const dt = new Date(d + 'T00:00:00Z');
+            return dt >= selectedRange.start && dt <= selectedRange.end;
+        })
+        .reduce((acc, d) => acc + (heatmapData[d] || 0), 0);
+
+    const journeyDuration = (() => {
+        if (dates.length === 0) return 0;
+
+        const firstEntryDate = new Date(dates[0] + 'T00:00:00Z');
+        const start = selectedRange.start ? new Date(Math.max(selectedRange.start.getTime(), firstEntryDate.getTime())) : firstEntryDate;
+        const end = selectedRange.end ? new Date(Math.min(selectedRange.end.getTime(), new Date().getTime())) : new Date();
+
+        const d1 = Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate());
+        const d2 = Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate());
+
+        if (d2 < d1) return 0;
+        return Math.floor((d2 - d1) / (1000 * 60 * 60 * 24)) + 1;
+    })();
+
+    const milestoneCounts = (() => {
+        const counts = { elite: 0, workhorse: 0, solid: 0, active: 0, rest: 0 };
+        if (dates.length === 0) return counts;
+
+        const firstEntryDate = new Date(dates[0] + 'T00:00:00Z');
+        const start = selectedRange.start ? new Date(Math.max(selectedRange.start.getTime(), firstEntryDate.getTime())) : firstEntryDate;
+        const end = selectedRange.end ? new Date(Math.min(selectedRange.end.getTime(), new Date().getTime())) : new Date();
+
+        const firstDayUTC = Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate());
+        const lastDayUTC = Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate());
+
+        if (lastDayUTC < firstDayUTC) return counts;
+        const totalDaysCount = Math.floor((lastDayUTC - firstDayUTC) / (1000 * 60 * 60 * 24)) + 1;
+
+        for (let i = 0; i < totalDaysCount; i++) {
+            const d = new Date(firstDayUTC);
+            d.setUTCDate(new Date(firstDayUTC).getUTCDate() + i);
+            const dStr = d.toISOString().split('T')[0];
+            const h = heatmapData[dStr] || 0;
+
+            if (h >= 6) counts.elite++;
+            else if (h >= 5) counts.workhorse++;
+            else if (h >= 4) counts.solid++;
+            else if (h >= 3) counts.active++;
+            else counts.rest++;
+        }
+        return counts;
+    })();
 
     return (
         <Modal
@@ -401,54 +507,115 @@ export const FullHistoryModal = ({ visible, onClose, heatmapData, onDayPress }) 
                         title="All Recorded Activity"
                     />
 
+                    {/* Custom Dropdown Selector */}
+                    <View style={styles.dropdownContainer}>
+                        <TouchableOpacity
+                            style={styles.dropdownButton}
+                            onPress={() => setPickerVisible(true)}
+                        >
+                            <View style={styles.dropdownButtonContent}>
+                                <Ionicons name="calendar" size={20} color="#3498db" style={{ marginRight: 8 }} />
+                                <Text style={styles.dropdownButtonText}>{selectedRange.label}</Text>
+                            </View>
+                            <Ionicons name="chevron-down" size={18} color="#7f8c8d" />
+                        </TouchableOpacity>
+                    </View>
+
+                    {/* Selection Modal (Dropdown content) */}
+                    <Modal
+                        visible={pickerVisible}
+                        transparent={true}
+                        animationType="fade"
+                        onRequestClose={() => setPickerVisible(false)}
+                    >
+                        <TouchableOpacity
+                            style={styles.pickerModalOverlay}
+                            activeOpacity={1}
+                            onPress={() => setPickerVisible(false)}
+                        >
+                            <View style={styles.pickerModalContent}>
+                                <View style={styles.pickerModalHeader}>
+                                    <Text style={styles.pickerModalTitle}>Select Period</Text>
+                                    <TouchableOpacity onPress={() => setPickerVisible(false)}>
+                                        <Ionicons name="close" size={24} color="#333" />
+                                    </TouchableOpacity>
+                                </View>
+                                <ScrollView bounces={false}>
+                                    {intervals.map((interval, idx) => (
+                                        <TouchableOpacity
+                                            key={`interval-${idx}`}
+                                            style={[
+                                                styles.pickerOption,
+                                                selectedRange.label === interval.label && styles.pickerOptionSelected
+                                            ]}
+                                            onPress={() => {
+                                                setSelectedRange(interval);
+                                                setPickerVisible(false);
+                                            }}
+                                        >
+                                            <Text style={[
+                                                styles.pickerOptionText,
+                                                selectedRange.label === interval.label && styles.pickerOptionTextSelected
+                                            ]}>
+                                                {interval.label}
+                                            </Text>
+                                            {selectedRange.label === interval.label && (
+                                                <Ionicons name="checkmark-circle" size={20} color="#3498db" />
+                                            )}
+                                        </TouchableOpacity>
+                                    ))}
+                                </ScrollView>
+                            </View>
+                        </TouchableOpacity>
+                    </Modal>
+
                     {/* Lifetime Statistics Section */}
-                    <Text style={styles.recentLogsTitle}>Lifetime Statistics</Text>
+                    <Text style={styles.recentLogsTitle}>
+                        {selectedRange.label === 'All Time' ? 'Lifetime Statistics' : `Stats for ${selectedRange.label}`}
+                    </Text>
                     <View style={styles.lifetimeStatsContainer}>
                         <View style={styles.lifetimeStatCard}>
                             <Ionicons name="calendar-outline" size={24} color="#3498db" />
-                            <Text style={styles.lifetimeStatValue}>{dates.length}</Text>
-                            <Text style={styles.lifetimeStatLabel}>Total Days</Text>
-                            <Text style={styles.lifetimeStatSub}>{dates[0] ? `From ${dates[0]}` : 'Tracked'}</Text>
+                            <Text style={styles.lifetimeStatValue}>{filteredDates.length}</Text>
+                            <Text style={styles.lifetimeStatLabel}>Active Days</Text>
+                            <Text style={styles.lifetimeStatSub}>
+                                {selectedRange.label === 'All Time' ? (dates[0] ? `From ${dates[0]}` : 'Tracked') : 'In Period'}
+                            </Text>
                         </View>
                         <View style={styles.lifetimeStatCard}>
                             <Ionicons name="time-outline" size={24} color="#2ecc71" />
                             <Text style={styles.lifetimeStatValue}>
-                                {Object.values(heatmapData).reduce((acc, val) => acc + (val || 0), 0).toFixed(1)}
+                                {totalHours.toFixed(1)}
                             </Text>
                             <Text style={styles.lifetimeStatLabel}>Total Hours</Text>
-                            <Text style={styles.lifetimeStatSub}>{dates[0] ? `Since ${dates[0]}` : 'Logged'}</Text>
+                            <Text style={styles.lifetimeStatSub}>
+                                {selectedRange.label === 'All Time' ? (dates[0] ? `Since ${dates[0]}` : 'Logged') : 'In Period'}
+                            </Text>
                         </View>
                     </View>
                     <View style={styles.singleStatContainer}>
                         <View style={[styles.lifetimeStatCard, { width: '60%' }]}>
                             <Ionicons name="analytics-outline" size={24} color="#e67e22" />
                             <Text style={styles.lifetimeStatValue}>
-                                {dates.length > 0 ? (Object.values(heatmapData).reduce((acc, val) => acc + (val || 0), 0) / dates.length).toFixed(1) : '0'}
+                                {filteredDates.length > 0 ? (totalHours / filteredDates.length).toFixed(1) : '0'}
                             </Text>
                             <Text style={styles.lifetimeStatLabel}>Daily Avg</Text>
-                            <Text style={styles.lifetimeStatSub}>Hours Per Day</Text>
+                            <Text style={styles.lifetimeStatSub}>Hours Per Active Day</Text>
                         </View>
                     </View>
 
                     {/* Journey Duration Section */}
                     <View style={styles.trackingRangeContainer}>
-                        <Text style={styles.trackingRangeHeader}>Journey Duration</Text>
+                        <Text style={styles.trackingRangeHeader}>
+                            {selectedRange.label === 'All Time' ? 'Journey Duration' : 'Period Duration'}
+                        </Text>
                         <Text style={styles.trackingRangeText}>
-                            <Text style={styles.trackingRangeValues}>
-                                {(() => {
-                                    if (dates.length === 0) return '0';
-                                    const firstDate = new Date(dates[0]);
-                                    const today = new Date();
-                                    // Normalize both to UTC midnight for accurate day difference
-                                    const d1 = Date.UTC(firstDate.getUTCFullYear(), firstDate.getUTCMonth(), firstDate.getUTCDate());
-                                    const d2 = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
-                                    const diffMs = d2 - d1;
-                                    return Math.floor(diffMs / (1000 * 60 * 60 * 24)) + 1;
-                                })()}
-                            </Text> Days Since Start
+                            <Text style={styles.trackingRangeValues}>{journeyDuration}</Text> Days
                         </Text>
                         <Text style={styles.trackingRangeSub}>
-                            {dates[0] || 'N/A'} — {dates[dates.length - 1] || 'Today'}
+                            {selectedRange.label === 'All Time' ?
+                                `${dates[0] || 'N/A'} — ${dates[dates.length - 1] || 'Today'}` :
+                                `${selectedRange.start.toISOString().split('T')[0]} — ${selectedRange.end.toISOString().split('T')[0]}`}
                         </Text>
                     </View>
 
@@ -456,40 +623,12 @@ export const FullHistoryModal = ({ visible, onClose, heatmapData, onDayPress }) 
                     {dates.length === 0 ? (
                         <Text style={styles.noHistoryText}>No records found yet.</Text>
                     ) : (() => {
-                        const counts = {
-                            elite: 0,     // 6+
-                            workhorse: 0, // 5 <= h < 6
-                            solid: 0,     // 4 <= h < 5
-                            active: 0,    // 3 <= h < 4
-                            rest: 0       // < 3
-                        };
-
-                        const firstDate = new Date(dates[0]);
-                        const today = new Date();
-                        const totalDays = Math.floor((Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()) -
-                            Date.UTC(firstDate.getUTCFullYear(), firstDate.getUTCMonth(), firstDate.getUTCDate())) / (1000 * 60 * 60 * 24)) + 1;
-
-                        for (let i = 0; i < totalDays; i++) {
-                            const d = new Date(firstDate);
-                            d.setUTCDate(firstDate.getUTCDate() + i);
-
-                            // Get date string in YYYY-MM-DD format for lookup
-                            const dStr = d.toISOString().split('T')[0];
-                            const h = heatmapData[dStr] || 0;
-
-                            if (h >= 6) counts.elite++;
-                            else if (h >= 5) counts.workhorse++;
-                            else if (h >= 4) counts.solid++;
-                            else if (h >= 3) counts.active++;
-                            else counts.rest++;
-                        }
-
                         const milestoneList = [
-                            { label: 'Elite (6+ hrs)', count: counts.elite, color: '#f1c40f', icon: 'flash' },
-                            { label: 'Workhorse (5+ hrs)', count: counts.workhorse, color: '#e67e22', icon: 'construct' },
-                            { label: 'Solid (4+ hrs)', count: counts.solid, color: '#3498db', icon: 'trending-up' },
-                            { label: 'Active (3+ hrs)', count: counts.active, color: '#2ecc71', icon: 'walk' },
-                            { label: 'Low/Rest (< 3 hrs)', count: counts.rest, color: '#95a5a6', icon: 'cafe' }
+                            { label: 'Elite (6+ hrs)', count: milestoneCounts.elite, color: '#f1c40f', icon: 'flash' },
+                            { label: 'Workhorse (5+ hrs)', count: milestoneCounts.workhorse, color: '#e67e22', icon: 'construct' },
+                            { label: 'Solid (4+ hrs)', count: milestoneCounts.solid, color: '#3498db', icon: 'trending-up' },
+                            { label: 'Active (3+ hrs)', count: milestoneCounts.active, color: '#2ecc71', icon: 'walk' },
+                            { label: 'Low/Rest (< 3 hrs)', count: milestoneCounts.rest, color: '#95a5a6', icon: 'cafe' }
                         ];
 
                         return milestoneList.map((m, idx) => (
@@ -1114,5 +1253,86 @@ const styles = StyleSheet.create({
         color: '#95a5a6',
         marginTop: 4,
         fontWeight: '500',
+    },
+    rangeSelectorContainer: {
+        marginVertical: 15,
+        backgroundColor: '#f8f9fa',
+        borderRadius: 12,
+        padding: 5,
+    },
+    dropdownContainer: {
+        marginVertical: 15,
+    },
+    dropdownButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        backgroundColor: '#fff',
+        borderRadius: 12,
+        paddingHorizontal: 16,
+        paddingVertical: 14,
+        borderWidth: 1,
+        borderColor: '#e0e0e0',
+        elevation: 1,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.05,
+        shadowRadius: 2,
+    },
+    dropdownButtonContent: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    dropdownButtonText: {
+        fontSize: 15,
+        fontWeight: '600',
+        color: '#2c3e50',
+    },
+    pickerModalOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.4)',
+        justifyContent: 'center',
+        padding: 20,
+    },
+    pickerModalContent: {
+        backgroundColor: '#fff',
+        borderRadius: 20,
+        maxHeight: '60%',
+        paddingBottom: 10,
+        overflow: 'hidden',
+    },
+    pickerModalHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        padding: 20,
+        borderBottomWidth: 1,
+        borderBottomColor: '#f0f0f0',
+    },
+    pickerModalTitle: {
+        fontSize: 18,
+        fontWeight: '700',
+        color: '#2c3e50',
+    },
+    pickerOption: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: 20,
+        paddingVertical: 15,
+        borderBottomWidth: 1,
+        borderBottomColor: '#f9f9f9',
+    },
+    pickerOptionSelected: {
+        backgroundColor: '#f0f7ff',
+    },
+    pickerOptionText: {
+        fontSize: 16,
+        color: '#7f8c8d',
+        fontWeight: '500',
+    },
+    pickerOptionTextSelected: {
+        color: '#3498db',
+        fontWeight: '700',
     },
 });

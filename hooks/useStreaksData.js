@@ -207,22 +207,30 @@ export const useStreaksData = () => {
         }
         setAvgIntensity(last90DaysHours / 90);
 
-        // 4. 7-Day Trend (vs Previous 7 Days)
-        let previous7DaysHours = 0;
-        for (let i = 7; i < 14; i++) {
-            const checkDate = new Date(endDateForStats);
-            checkDate.setUTCDate(endDateForStats.getUTCDate() - i);
-            const dateStr = getUTCDateString(checkDate);
-            if (cleanedHeatmapData[dateStr]) {
-                previous7DaysHours += cleanedHeatmapData[dateStr];
+        // 4. 7-Day Trend (Current Week So Far vs Previous Week Same Days)
+        // weekHours already contains hours from Monday up to endDateForStats (today/yesterday)
+
+        // Calculate how many days have elapsed from Monday to endDateForStats
+        const daysInCurrentPeriod = Math.floor((endDateForStats.getTime() - startOfWeek.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+
+        let previousWeekSameDaysHours = 0;
+        const startOfPreviousWeek = new Date(startOfWeek);
+        startOfPreviousWeek.setUTCDate(startOfWeek.getUTCDate() - 7);
+
+        for (let i = 0; i < daysInCurrentPeriod; i++) {
+            const d = new Date(startOfPreviousWeek);
+            d.setUTCDate(startOfPreviousWeek.getUTCDate() + i);
+            const dStr = getUTCDateString(d);
+            if (cleanedHeatmapData[dStr]) {
+                previousWeekSameDaysHours += cleanedHeatmapData[dStr];
             }
         }
 
         let trendPercentage = 0;
-        if (previous7DaysHours === 0) {
-            trendPercentage = last7DaysHours > 0 ? 100 : 0;
+        if (previousWeekSameDaysHours === 0) {
+            trendPercentage = weekHours > 0 ? 100 : 0;
         } else {
-            trendPercentage = ((last7DaysHours - previous7DaysHours) / previous7DaysHours) * 100;
+            trendPercentage = ((weekHours - previousWeekSameDaysHours) / previousWeekSameDaysHours) * 100;
         }
         setTrendPercentage(trendPercentage);
 
@@ -257,9 +265,9 @@ export const useStreaksData = () => {
         const consistencyPoints = effectiveWinRate * 60;
 
         // 2. Intensity Score (Max 40)
-        // Target: 6 hours avg = Max Score (Updated from 5)
+        // Target: 5 hours avg = Max Score (Reverted from 6)
         const effectiveAvgHours = winsToCountInScore > 0 ? monthTotalHoursSum / winsToCountInScore : 0;
-        const intensityPoints = Math.min((effectiveAvgHours / 6) * 40, 40);
+        const intensityPoints = Math.min((effectiveAvgHours / 5) * 40, 40);
 
         const totalScore = Math.round(consistencyPoints + intensityPoints);
 
