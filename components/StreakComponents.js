@@ -156,7 +156,7 @@ export const StreakHeader = ({ currentStreak, longestStreak }) => (
     </View>
 );
 
-export const StatsOverview = ({ thisWeekScore, thisWeekHours, thisWeekAvg, monthlyScore, consistencyScore, avgIntensity, trendPercentage }) => {
+export const StatsOverview = ({ targetProgress, thisWeekHours, thisWeekAvg, monthlyScore, consistencyScore, avgIntensity, trendPercentage }) => {
     // Dynamic Color Logic
     const trendIsPositive = trendPercentage >= 0;
     const trendColor = trendIsPositive ? '#2ecc71' : '#e74c3c';
@@ -173,7 +173,7 @@ export const StatsOverview = ({ thisWeekScore, thisWeekHours, thisWeekAvg, month
             <View style={styles.statsContainer}>
                 <View style={styles.statBox}>
                     <Ionicons name="calendar-outline" size={24} color="#3498db" />
-                    <Text style={styles.statNumber}>{thisWeekScore} / 7</Text>
+                    <Text style={styles.statNumber}>{Math.round(targetProgress)}%</Text>
                     <Text style={styles.statSubtext}>{thisWeekAvg.toFixed(1)} Hrs / Day</Text>
                     <Text style={styles.statLabel}>This Week</Text>
                 </View>
@@ -196,7 +196,7 @@ export const StatsOverview = ({ thisWeekScore, thisWeekHours, thisWeekAvg, month
                     <Text style={[styles.statNumber, { color: trendColor }]}>
                         {trendIsPositive ? '+' : ''}{trendPercentage.toFixed(0)}%
                     </Text>
-                    <Text style={styles.statSubtext}>vs Last Week</Text>
+                    <Text style={styles.statSubtext}>vs ideal (4.5h/d)</Text>
                     <Text style={styles.statLabel}>7-Day Trend</Text>
                 </View>
             </View>

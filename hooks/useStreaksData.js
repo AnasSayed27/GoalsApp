@@ -29,6 +29,7 @@ export const useStreaksData = () => {
     const [thisWeekAvg, setThisWeekAvg] = useState(0);
     const [avgIntensity, setAvgIntensity] = useState(0);
     const [trendPercentage, setTrendPercentage] = useState(0);
+    const [targetProgress, setTargetProgress] = useState(0);
 
     // Gamification State
     const [levelInfo, setLevelInfo] = useState({
@@ -207,32 +208,26 @@ export const useStreaksData = () => {
         }
         setAvgIntensity(last90DaysHours / 90);
 
-        // 4. 7-Day Trend (Current Week So Far vs Previous Week Same Days)
+        // 4. Trend (Current Week So Far vs Ideal Week)
         // weekHours already contains hours from Monday up to endDateForStats (today/yesterday)
 
         // Calculate how many days have elapsed from Monday to endDateForStats
         const daysInCurrentPeriod = Math.floor((endDateForStats.getTime() - startOfWeek.getTime()) / (1000 * 60 * 60 * 24)) + 1;
 
-        let previousWeekSameDaysHours = 0;
-        const startOfPreviousWeek = new Date(startOfWeek);
-        startOfPreviousWeek.setUTCDate(startOfWeek.getUTCDate() - 7);
-
-        for (let i = 0; i < daysInCurrentPeriod; i++) {
-            const d = new Date(startOfPreviousWeek);
-            d.setUTCDate(startOfPreviousWeek.getUTCDate() + i);
-            const dStr = getUTCDateString(d);
-            if (cleanedHeatmapData[dStr]) {
-                previousWeekSameDaysHours += cleanedHeatmapData[dStr];
-            }
-        }
+        // Ideal is 4.5 hours per day
+        const idealHoursSoFar = daysInCurrentPeriod * 4.5;
 
         let trendPercentage = 0;
-        if (previousWeekSameDaysHours === 0) {
+        if (idealHoursSoFar === 0) {
             trendPercentage = weekHours > 0 ? 100 : 0;
         } else {
-            trendPercentage = ((weekHours - previousWeekSameDaysHours) / previousWeekSameDaysHours) * 100;
+            trendPercentage = ((weekHours - idealHoursSoFar) / idealHoursSoFar) * 100;
         }
         setTrendPercentage(trendPercentage);
+
+        // Target Progress (% of ideal hours so far)
+        const currentTargetProgress = idealHoursSoFar > 0 ? (weekHours / idealHoursSoFar) * 100 : 0;
+        setTargetProgress(currentTargetProgress);
 
         // --- Dynamic Tier System (Calendar Month) ---
         const lastDayOfMonth = endDateForStats.getUTCDate();
@@ -338,6 +333,7 @@ export const useStreaksData = () => {
         thisWeekAvg,
         avgIntensity,
         trendPercentage,
+        targetProgress,
         levelInfo,
         consistencyScore,
         isLoading,

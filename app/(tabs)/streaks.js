@@ -109,7 +109,7 @@ const StreaksScreen = () => {
             />
 
             <StatsOverview
-                thisWeekScore={thisWeekScore}
+                targetProgress={targetProgress}
                 thisWeekHours={thisWeekHours}
                 thisWeekAvg={thisWeekAvg}
                 monthlyScore={monthlyScore}
