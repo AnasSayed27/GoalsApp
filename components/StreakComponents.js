@@ -173,7 +173,9 @@ export const StatsOverview = ({ targetProgress, thisWeekHours, thisWeekAvg, mont
             <View style={styles.statsContainer}>
                 <View style={styles.statBox}>
                     <Ionicons name="calendar-outline" size={24} color="#3498db" />
-                    <Text style={styles.statNumber}>{Math.round(targetProgress)}%</Text>
+                    <Text style={styles.statNumber}>
+                        {Math.round(targetProgress)}% <Text style={{ fontSize: 12, color: '#7f8c8d', fontWeight: '600' }}>of ideal</Text>
+                    </Text>
                     <Text style={styles.statSubtext}>{thisWeekAvg.toFixed(1)} Hrs / Day</Text>
                     <Text style={styles.statLabel}>This Week</Text>
                 </View>
