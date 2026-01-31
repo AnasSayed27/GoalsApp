@@ -29,7 +29,6 @@ const StreaksScreen = () => {
         isLoading,
         loadData,
         updateHoursForDate,
-        clearData
     } = useStreaksData();
 
     const [modalVisible, setModalVisible] = useState(false);
@@ -54,25 +53,7 @@ const StreaksScreen = () => {
         setModalVisible(false);
     };
 
-    const handleClearData = () => {
-        Alert.alert(
-            "Confirm Clear",
-            "Are you sure you want to clear all streak and hours data? This action cannot be undone.",
-            [
-                { text: "Cancel", style: "cancel" },
-                {
-                    text: "Clear Data",
-                    style: "destructive",
-                    onPress: async () => {
-                        const success = await clearData();
-                        if (success) {
-                            Alert.alert("Data Cleared", "All your data has been successfully cleared.");
-                        }
-                    },
-                },
-            ]
-        );
-    };
+
 
     if (isLoading && !Object.keys(heatmapData).length) {
         return (
@@ -130,14 +111,6 @@ const StreaksScreen = () => {
                 <Ionicons name="time-outline" size={20} color="#3498db" />
                 <Text style={styles.historyButtonText}>View Full History</Text>
             </TouchableOpacity>
-
-            <TouchableOpacity
-                style={styles.clearButton}
-                onPress={handleClearData}
-            >
-                <Ionicons name="trash-bin-outline" size={20} color="#e74c3c" />
-                <Text style={styles.clearButtonText}>Clear All Data</Text>
-            </TouchableOpacity>
         </ScrollView>
     );
 };
@@ -170,29 +143,6 @@ const styles = StyleSheet.create({
         color: '#2c3e50',
         textAlign: 'center',
         letterSpacing: -0.5,
-    },
-    clearButton: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        marginTop: 10,
-        paddingVertical: 14,
-        paddingHorizontal: 30,
-        backgroundColor: '#fff',
-        borderRadius: 30,
-        borderWidth: 1,
-        borderColor: '#ffebee',
-        shadowColor: "#e74c3c",
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.1,
-        shadowRadius: 10,
-        elevation: 3,
-    },
-    clearButtonText: {
-        color: '#e74c3c',
-        fontSize: 15,
-        marginLeft: 8,
-        fontWeight: '600',
     },
     historyButton: {
         flexDirection: 'row',

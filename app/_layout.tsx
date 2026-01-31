@@ -15,6 +15,9 @@ export default function RootLayout() {
 
   useEffect(() => {
     SplashScreen.hideAsync();
+    // Run auto-backup check on startup
+    const { checkAndRunAutoBackup } = require('../services/BackupService');
+    checkAndRunAutoBackup();
   }, []);
 
   return (
