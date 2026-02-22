@@ -30,6 +30,7 @@ export const useStreaksData = () => {
     const [avgIntensity, setAvgIntensity] = useState(0);
     const [trendPercentage, setTrendPercentage] = useState(0);
     const [targetProgress, setTargetProgress] = useState(0);
+    const [weekOverWeekGrowth, setWeekOverWeekGrowth] = useState(0);
 
     // Gamification State
     const [levelInfo, setLevelInfo] = useState({
@@ -229,6 +230,29 @@ export const useStreaksData = () => {
         const currentTargetProgress = idealHoursSoFar > 0 ? (weekHours / idealHoursSoFar) * 100 : 0;
         setTargetProgress(currentTargetProgress);
 
+        // 5. Week-over-Week Growth
+        // Compare current week (Mon-Today) vs same period last week
+        const startOfLastWeek = new Date(startOfWeek);
+        startOfLastWeek.setUTCDate(startOfWeek.getUTCDate() - 7);
+
+        let lastWeekHoursSamePeriod = 0;
+        for (let i = 0; i < daysInCurrentPeriod; i++) {
+            const d = new Date(startOfLastWeek);
+            d.setUTCDate(startOfLastWeek.getUTCDate() + i);
+            const dStr = getUTCDateString(d);
+            if (cleanedHeatmapData[dStr]) {
+                lastWeekHoursSamePeriod += cleanedHeatmapData[dStr];
+            }
+        }
+
+        let growth = 0;
+        if (lastWeekHoursSamePeriod > 0) {
+            growth = ((weekHours - lastWeekHoursSamePeriod) / lastWeekHoursSamePeriod) * 100;
+        } else {
+            growth = weekHours > 0 ? 100 : 0;
+        }
+        setWeekOverWeekGrowth(growth);
+
         // --- Dynamic Tier System (Calendar Month) ---
         const lastDayOfMonth = endDateForStats.getUTCDate();
         const monthMonth = endDateForStats.getUTCMonth();
@@ -334,6 +358,7 @@ export const useStreaksData = () => {
         avgIntensity,
         trendPercentage,
         targetProgress,
+        weekOverWeekGrowth,
         levelInfo,
         consistencyScore,
         isLoading,

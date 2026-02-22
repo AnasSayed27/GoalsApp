@@ -87,6 +87,10 @@ export const useTasksData = () => {
         await saveTasks(updated);
     };
 
+    const reorderTasks = async (newOrderedTasks) => {
+        await saveTasks(newOrderedTasks);
+    };
+
     // Derived state
     const totalDuration = tasks.reduce((sum, task) => sum + task.duration, 0);
     const completedDuration = tasks.reduce((sum, task) => task.completed ? sum + task.duration : sum, 0);
@@ -100,6 +104,7 @@ export const useTasksData = () => {
         deleteTask,
         editTask,
         reorderTask,
+        reorderTasks,
         stats: {
             totalDuration,
             completedDuration,

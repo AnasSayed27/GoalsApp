@@ -24,6 +24,7 @@ const StreaksScreen = () => {
         avgIntensity,
         trendPercentage,
         targetProgress,
+        weekOverWeekGrowth,
         levelInfo,
         consistencyScore,
         isLoading,
@@ -91,6 +92,7 @@ const StreaksScreen = () => {
 
             <StatsOverview
                 targetProgress={targetProgress}
+                weekOverWeekGrowth={weekOverWeekGrowth}
                 thisWeekHours={thisWeekHours}
                 thisWeekAvg={thisWeekAvg}
                 monthlyScore={monthlyScore}

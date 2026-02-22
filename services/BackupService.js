@@ -121,10 +121,10 @@ export const setupAutoBackup = async () => {
         if (permissions.granted) {
             await StorageService.save(STORAGE_KEYS.AUTO_BACKUP_DIR_URI, permissions.directoryUri);
             await StorageService.save(STORAGE_KEYS.AUTO_BACKUP_ENABLED, true);
-            // Mark last backup as now to start the 7-day timer
+            // Mark last backup as now to start the tracking
             await StorageService.save(STORAGE_KEYS.LAST_AUTO_BACKUP_TIME, new Date().getTime());
 
-            Alert.alert('Auto-Backup Enabled', 'The app will now automatically save a backup every 30 days to this folder.');
+            Alert.alert('Auto-Backup Enabled', 'The app will now automatically save a backup on the 1st of every month to this folder.');
             return true;
         }
         return false;
@@ -135,24 +135,31 @@ export const setupAutoBackup = async () => {
 };
 
 /**
- * Checks if a week has passed and runs a silent backup if enabled.
+ * Checks if it's the 1st of the month and runs a silent backup if enabled.
  */
 export const checkAndRunAutoBackup = async () => {
     try {
         const isEnabled = await StorageService.get(STORAGE_KEYS.AUTO_BACKUP_ENABLED, false);
         const dirUri = await StorageService.get(STORAGE_KEYS.AUTO_BACKUP_DIR_URI, null);
-        const lastBackup = await StorageService.get(STORAGE_KEYS.LAST_AUTO_BACKUP_TIME, 0);
+        const lastBackupTime = await StorageService.get(STORAGE_KEYS.LAST_AUTO_BACKUP_TIME, 0);
 
         if (!isEnabled || !dirUri) return;
 
-        const now = new Date().getTime();
-        const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
+        const now = new Date();
+        const lastBackup = new Date(lastBackupTime);
 
-        if (now - lastBackup >= thirtyDaysMs) {
+        // Logic: 
+        // 1. Must be the 1st day of the month
+        // 2. Must not have already backed up this month (different month OR different year)
+        const isFirstDayOfMonth = now.getDate() === 1;
+        const differentMonth = now.getMonth() !== lastBackup.getMonth();
+        const differentYear = now.getFullYear() !== lastBackup.getFullYear();
+
+        if (isFirstDayOfMonth && (differentMonth || differentYear)) {
             const success = await exportData(dirUri);
             if (success) {
-                await StorageService.save(STORAGE_KEYS.LAST_AUTO_BACKUP_TIME, now);
-                console.log('Auto-Backup: Success');
+                await StorageService.save(STORAGE_KEYS.LAST_AUTO_BACKUP_TIME, now.getTime());
+                console.log('Auto-Backup: Success for the 1st of the month');
             }
         }
     } catch (error) {

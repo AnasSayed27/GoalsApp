@@ -1,8 +1,9 @@
 import React, { useState, useRef } from 'react';
-import { View, Text, StyleSheet, FlatList, Alert, Animated } from 'react-native';
+import { View, Text, StyleSheet, Alert, Animated } from 'react-native';
+import DraggableFlatList from 'react-native-draggable-flatlist';
 import { Ionicons } from '@expo/vector-icons';
 import { useTasksData } from '../../hooks/useTasksData';
-import { ProgressSection, TaskInput, TaskItem, TaskMenuModal, EditTaskModal } from '../../components/TaskComponents';
+import { ProgressSection, TaskInput, TaskItem, EditTaskModal } from '../../components/TaskComponents';
 import { Colors } from '../../constants/Colors';
 
 const TasksScreen = () => {
@@ -11,19 +12,13 @@ const TasksScreen = () => {
     addTask,
     toggleComplete,
     deleteTask,
-    editTask,
-    reorderTask,
+    reorderTasks,
     stats
   } = useTasksData();
 
   // UI State
   const [newName, setNewName] = useState('');
   const [newDuration, setNewDuration] = useState(1);
-
-  const [menuVisible, setMenuVisible] = useState(false);
-  const [selectedTaskId, setSelectedTaskId] = useState(null);
-
-  const [editModalVisible, setEditModalVisible] = useState(false);
 
   // Animation State
   const [congratsMessage, setCongratsMessage] = useState('');
@@ -35,7 +30,6 @@ const TasksScreen = () => {
     const success = await addTask(newName, newDuration);
     if (success) {
       setNewName('');
-      // Keep duration for convenience or reset? Let's keep it.
     }
   };
 
@@ -65,38 +59,28 @@ const TasksScreen = () => {
     ]).start();
   };
 
-  const handleMenuPress = (id) => {
-    setSelectedTaskId(id);
-    setMenuVisible(true);
-  };
-
-  const handleDelete = () => {
-    Alert.alert('Delete Task', 'Are you sure?', [
+  const handleDelete = (id) => {
+    Alert.alert('Delete Task', 'Are you sure you want to delete this task?', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete',
         style: 'destructive',
         onPress: () => {
-          deleteTask(selectedTaskId);
-          setMenuVisible(false);
+          deleteTask(id);
         }
       }
     ]);
   };
 
-  const handleEditStart = () => {
-    setMenuVisible(false);
-    setEditModalVisible(true);
-  };
-
-  const handleEditSave = async (name, duration) => {
-    const success = await editTask(selectedTaskId, name, duration);
-    if (success) {
-      setEditModalVisible(false);
-    }
-  };
-
-  const selectedTask = tasks.find(t => t.id === selectedTaskId);
+  const renderItem = ({ item, drag, isActive }) => (
+    <TaskItem
+      item={item}
+      onToggle={handleToggleComplete}
+      onDelete={handleDelete}
+      drag={drag}
+      isActive={isActive}
+    />
+  );
 
   return (
     <View style={styles.container}>
@@ -124,16 +108,11 @@ const TasksScreen = () => {
         onAdd={handleAddTask}
       />
 
-      <FlatList
+      <DraggableFlatList
         data={tasks}
         keyExtractor={item => item.id}
-        renderItem={({ item }) => (
-          <TaskItem
-            item={item}
-            onToggle={handleToggleComplete}
-            onMenuPress={handleMenuPress}
-          />
-        )}
+        renderItem={renderItem}
+        onDragEnd={({ data }) => reorderTasks(data)}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
             <Ionicons name="clipboard-outline" size={48} color="#ccc" />
@@ -141,23 +120,8 @@ const TasksScreen = () => {
           </View>
         }
         style={styles.taskList}
-      />
-
-      <TaskMenuModal
-        visible={menuVisible}
-        onClose={() => setMenuVisible(false)}
-        onMoveUp={() => { reorderTask(selectedTaskId, 'up'); setMenuVisible(false); }}
-        onMoveDown={() => { reorderTask(selectedTaskId, 'down'); setMenuVisible(false); }}
-        onEdit={handleEditStart}
-        onDelete={handleDelete}
-      />
-
-      <EditTaskModal
-        visible={editModalVisible}
-        onClose={() => setEditModalVisible(false)}
-        onSave={handleEditSave}
-        initialName={selectedTask?.name || ''}
-        initialDuration={selectedTask?.duration || 1}
+        containerStyle={{ flex: 1 }}
+        contentContainerStyle={{ paddingBottom: 20 }}
       />
     </View>
   );
@@ -174,3 +138,4 @@ const styles = StyleSheet.create({
 });
 
 export default TasksScreen;
+

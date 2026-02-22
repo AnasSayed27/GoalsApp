@@ -156,11 +156,15 @@ export const StreakHeader = ({ currentStreak, longestStreak }) => (
     </View>
 );
 
-export const StatsOverview = ({ targetProgress, thisWeekHours, thisWeekAvg, monthlyScore, consistencyScore, avgIntensity, trendPercentage }) => {
+export const StatsOverview = ({ targetProgress, weekOverWeekGrowth, thisWeekHours, thisWeekAvg, monthlyScore, consistencyScore, avgIntensity, trendPercentage }) => {
     // Dynamic Color Logic
     const trendIsPositive = trendPercentage >= 0;
     const trendColor = trendIsPositive ? '#2ecc71' : '#e74c3c';
     const trendIcon = trendIsPositive ? 'trending-up-outline' : 'trending-down-outline';
+
+    const growthIsPositive = weekOverWeekGrowth >= 0;
+    const growthColor = growthIsPositive ? '#2ecc71' : '#e74c3c';
+    const growthIcon = growthIsPositive ? 'arrow-up-outline' : 'arrow-down-outline';
 
     const winRate = Math.round(consistencyScore * 100);
     let winRateColor = '#9b59b6'; // Default Purple
@@ -172,12 +176,15 @@ export const StatsOverview = ({ targetProgress, thisWeekHours, thisWeekAvg, mont
         <>
             <View style={styles.statsContainer}>
                 <View style={styles.statBox}>
-                    <Ionicons name="calendar-outline" size={24} color="#3498db" />
-                    <Text style={styles.statNumber}>
-                        {Math.round(targetProgress)}% <Text style={{ fontSize: 12, color: '#7f8c8d', fontWeight: '600' }}>of ideal</Text>
-                    </Text>
+                    <Ionicons name={growthIcon} size={24} color={growthColor} />
+                    <View style={{ flexDirection: 'row', alignItems: 'baseline', marginTop: 10, marginBottom: 2 }}>
+                        <Text style={[styles.statNumber, { color: growthColor, marginTop: 0, marginBottom: 0 }]}>
+                            {growthIsPositive ? '+' : ''}{Math.round(weekOverWeekGrowth)}%
+                        </Text>
+                        <Text style={{ fontSize: 7.5, color: '#bdc3c7', fontWeight: '700', marginLeft: 4, textTransform: 'uppercase' }}>vs last week</Text>
+                    </View>
                     <Text style={styles.statSubtext}>{thisWeekAvg.toFixed(1)} Hrs / Day</Text>
-                    <Text style={styles.statLabel}>This Week</Text>
+                    <Text style={styles.statLabel}>7-Day Trend</Text>
                 </View>
                 <View style={styles.statBox}>
                     <Ionicons name="calendar-number-outline" size={24} color={winRateColor} />
@@ -199,7 +206,7 @@ export const StatsOverview = ({ targetProgress, thisWeekHours, thisWeekAvg, mont
                         {trendIsPositive ? '+' : ''}{trendPercentage.toFixed(0)}%
                     </Text>
                     <Text style={styles.statSubtext}>vs ideal (4.5h/d)</Text>
-                    <Text style={styles.statLabel}>7-Day Trend</Text>
+                    <Text style={styles.statLabel}>This Week</Text>
                 </View>
             </View>
         </>
@@ -271,7 +278,12 @@ export const HeatmapGrid = ({ heatmapData, onDayPress, numWeeks = NUM_WEEKS_TO_S
                         </Text>
                     ))}
                 </View>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.gridScrollView}>
+                <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    style={styles.gridScrollView}
+                    nestedScrollEnabled={true}
+                >
                     <View style={styles.gridInnerContainer}>
                         {transposedGridData[0].map((_, weekIndex) => (
                             <View key={`weekcol-${weekIndex}`} style={[styles.weekColumn, { marginRight: weekIndex < numWeeks - 1 ? 4 : 0 }]}>
@@ -501,7 +513,11 @@ export const FullHistoryModal = ({ visible, onClose, heatmapData, onDayPress }) 
                     <View style={{ width: 24 }} />
                 </View>
 
-                <ScrollView contentContainerStyle={{ padding: 16 }}>
+                <ScrollView
+                    style={{ flex: 1 }}
+                    contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
+                    nestedScrollEnabled={true}
+                >
                     <HeatmapGrid
                         heatmapData={heatmapData}
                         onDayPress={onDayPress}
@@ -523,53 +539,7 @@ export const FullHistoryModal = ({ visible, onClose, heatmapData, onDayPress }) 
                         </TouchableOpacity>
                     </View>
 
-                    {/* Selection Modal (Dropdown content) */}
-                    <Modal
-                        visible={pickerVisible}
-                        transparent={true}
-                        animationType="fade"
-                        onRequestClose={() => setPickerVisible(false)}
-                    >
-                        <TouchableOpacity
-                            style={styles.pickerModalOverlay}
-                            activeOpacity={1}
-                            onPress={() => setPickerVisible(false)}
-                        >
-                            <View style={styles.pickerModalContent}>
-                                <View style={styles.pickerModalHeader}>
-                                    <Text style={styles.pickerModalTitle}>Select Period</Text>
-                                    <TouchableOpacity onPress={() => setPickerVisible(false)}>
-                                        <Ionicons name="close" size={24} color="#333" />
-                                    </TouchableOpacity>
-                                </View>
-                                <ScrollView bounces={false}>
-                                    {intervals.map((interval, idx) => (
-                                        <TouchableOpacity
-                                            key={`interval-${idx}`}
-                                            style={[
-                                                styles.pickerOption,
-                                                selectedRange.label === interval.label && styles.pickerOptionSelected
-                                            ]}
-                                            onPress={() => {
-                                                setSelectedRange(interval);
-                                                setPickerVisible(false);
-                                            }}
-                                        >
-                                            <Text style={[
-                                                styles.pickerOptionText,
-                                                selectedRange.label === interval.label && styles.pickerOptionTextSelected
-                                            ]}>
-                                                {interval.label}
-                                            </Text>
-                                            {selectedRange.label === interval.label && (
-                                                <Ionicons name="checkmark-circle" size={20} color="#3498db" />
-                                            )}
-                                        </TouchableOpacity>
-                                    ))}
-                                </ScrollView>
-                            </View>
-                        </TouchableOpacity>
-                    </Modal>
+
 
                     {/* Lifetime Statistics Section */}
                     <Text style={styles.recentLogsTitle}>
@@ -646,6 +616,54 @@ export const FullHistoryModal = ({ visible, onClose, heatmapData, onDayPress }) 
                         ));
                     })()}
                 </ScrollView>
+
+                {/* Selection Modal (Dropdown content) moved outside ScrollView */}
+                <Modal
+                    visible={pickerVisible}
+                    transparent={true}
+                    animationType="fade"
+                    onRequestClose={() => setPickerVisible(false)}
+                >
+                    <TouchableOpacity
+                        style={styles.pickerModalOverlay}
+                        activeOpacity={1}
+                        onPress={() => setPickerVisible(false)}
+                    >
+                        <View style={styles.pickerModalContent}>
+                            <View style={styles.pickerModalHeader}>
+                                <Text style={styles.pickerModalTitle}>Select Period</Text>
+                                <TouchableOpacity onPress={() => setPickerVisible(false)}>
+                                    <Ionicons name="close" size={24} color="#333" />
+                                </TouchableOpacity>
+                            </View>
+                            <ScrollView bounces={false}>
+                                {intervals.map((interval, idx) => (
+                                    <TouchableOpacity
+                                        key={`interval-${idx}`}
+                                        style={[
+                                            styles.pickerOption,
+                                            selectedRange.label === interval.label && styles.pickerOptionSelected
+                                        ]}
+                                        onPress={() => {
+                                            setSelectedRange(interval);
+                                            setPickerVisible(false);
+                                        }}
+                                    >
+                                        <Text style={[
+                                            styles.pickerOptionText,
+                                            selectedRange.label === interval.label && styles.pickerOptionTextSelected
+                                        ]}>
+                                            {interval.label}
+                                        </Text>
+                                        {selectedRange.label === interval.label && (
+                                            <Ionicons name="checkmark-circle" size={20} color="#3498db" />
+                                        )}
+                                    </TouchableOpacity>
+                                ))}
+                            </ScrollView>
+                        </View>
+                    </TouchableOpacity>
+                </Modal>
             </View>
         </Modal>
     );
