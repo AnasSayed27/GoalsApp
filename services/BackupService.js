@@ -124,7 +124,7 @@ export const setupAutoBackup = async () => {
             // Mark last backup as now to start the tracking
             await StorageService.save(STORAGE_KEYS.LAST_AUTO_BACKUP_TIME, new Date().getTime());
 
-            Alert.alert('Auto-Backup Enabled', 'The app will now automatically save a backup on the 1st of every month to this folder.');
+            Alert.alert('Auto-Backup Enabled', 'The app will now automatically save a backup on your first visit of every month to this folder.');
             return true;
         }
         return false;
@@ -149,17 +149,16 @@ export const checkAndRunAutoBackup = async () => {
         const lastBackup = new Date(lastBackupTime);
 
         // Logic: 
-        // 1. Must be the 1st day of the month
-        // 2. Must not have already backed up this month (different month OR different year)
-        const isFirstDayOfMonth = now.getDate() === 1;
+        // It should backup the FIRST time the app is opened in a new month.
+        // Must not have already backed up this month (different month OR different year)
         const differentMonth = now.getMonth() !== lastBackup.getMonth();
         const differentYear = now.getFullYear() !== lastBackup.getFullYear();
 
-        if (isFirstDayOfMonth && (differentMonth || differentYear)) {
+        if (differentMonth || differentYear) {
             const success = await exportData(dirUri);
             if (success) {
                 await StorageService.save(STORAGE_KEYS.LAST_AUTO_BACKUP_TIME, now.getTime());
-                console.log('Auto-Backup: Success for the 1st of the month');
+                console.log('Auto-Backup: Success for the new month');
             }
         }
     } catch (error) {

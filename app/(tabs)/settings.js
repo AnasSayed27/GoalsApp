@@ -169,7 +169,7 @@ const SettingsScreen = () => {
                         <Text style={styles.autoBackupTitle}>Monthly Auto-Backup</Text>
                         <Text style={styles.autoBackupSubtitle}>
                             {autoBackupEnabled
-                                ? "Enabled: Silently saving on the 1st of every month"
+                                ? "Enabled: Silently saving on your first visit each month"
                                 : "Disabled: Manually backup recommended"}
                         </Text>
                     </View>

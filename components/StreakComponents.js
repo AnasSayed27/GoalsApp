@@ -517,6 +517,7 @@ export const FullHistoryModal = ({ visible, onClose, heatmapData, onDayPress }) 
                     style={{ flex: 1 }}
                     contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
                     nestedScrollEnabled={true}
+                    removeClippedSubviews={false}
                 >
                     <HeatmapGrid
                         heatmapData={heatmapData}

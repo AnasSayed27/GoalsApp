@@ -134,10 +134,6 @@ export const TaskItem = ({ item, onToggle, onDelete, drag, isActive }) => {
             >
                 <Ionicons name="trash-outline" size={20} color={Colors.palette.danger} />
             </TouchableOpacity>
-
-            <View style={styles.reorderHandle}>
-                <Ionicons name="reorder-two-outline" size={20} color="#ccc" />
-            </View>
         </TouchableOpacity>
     );
 };
