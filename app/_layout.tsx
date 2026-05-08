@@ -7,6 +7,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { useColorScheme } from '@/hooks/useColorScheme';
+import { checkAndRunAutoBackup } from '../services/BackupService';
 
 // Prevent the splash screen from auto-hiding
 SplashScreen.preventAutoHideAsync();
@@ -17,7 +18,6 @@ export default function RootLayout() {
   useEffect(() => {
     SplashScreen.hideAsync();
     // Run auto-backup check on startup
-    const { checkAndRunAutoBackup } = require('../services/BackupService');
     checkAndRunAutoBackup();
   }, []);
 

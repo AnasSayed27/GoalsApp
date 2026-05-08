@@ -9,8 +9,8 @@ import {
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
-import { useStreaksData } from '../../hooks/useStreaksData';
-import { StreakHeader, StatsOverview, HeatmapGrid, LogHoursModal, TierCard, FullHistoryModal } from '../../components/StreakComponents';
+import { useStreaks } from '../../hooks/useStreaks';
+import { StreakHeader, StatsOverview, HeatmapGrid, LogHoursModal, TierCard, FullHistoryModal } from '../../components/streaks';
 
 const StreaksScreen = () => {
     const {
@@ -30,7 +30,7 @@ const StreaksScreen = () => {
         isLoading,
         loadData,
         updateHoursForDate,
-    } = useStreaksData();
+    } = useStreaks();
 
     const [modalVisible, setModalVisible] = useState(false);
     const [fullHistoryVisible, setFullHistoryVisible] = useState(false);

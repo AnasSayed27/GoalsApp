@@ -11,23 +11,25 @@ import {
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useRouter } from 'expo-router';
-import { useGoalsData } from '../../../hooks/useGoalsData';
+import { useGoals } from '../../../hooks/useGoals';
 import { Colors } from '../../../constants/Colors';
+import { formatDateLong } from '../../../utils/dateHelpers';
+import { DEFAULT_GOAL_WEEKS } from '../../../constants/Config';
 
 const AddGoalScreen = () => {
   const [goalName, setGoalName] = useState('');
   const [startDate, setStartDate] = useState(new Date());
   
   const defaultEndDate = new Date();
-  defaultEndDate.setDate(defaultEndDate.getDate() + (12 * 7));
+  defaultEndDate.setDate(defaultEndDate.getDate() + (DEFAULT_GOAL_WEEKS * 7));
   const [endDate, setEndDate] = useState(defaultEndDate);
   
-  const [weeksLength, setWeeksLength] = useState('12');
+  const [weeksLength, setWeeksLength] = useState(String(DEFAULT_GOAL_WEEKS));
   const [showStartDatePicker, setShowStartDatePicker] = useState(false);
   const [showEndDatePicker, setShowEndDatePicker] = useState(false);
 
   const router = useRouter();
-  const { addGoal } = useGoalsData();
+  const { addGoal } = useGoals();
 
   const onStartDateChange = (event, selectedDate) => {
     const currentDate = selectedDate || startDate;
@@ -94,10 +96,6 @@ const AddGoalScreen = () => {
     }
   };
 
-  const formatDate = (date) => {
-    return date.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
-  }
-
   return (
     <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
       <Text style={styles.label}>Goal Name:</Text>
@@ -111,7 +109,7 @@ const AddGoalScreen = () => {
       {/* --- Start Date --- */}
       <Text style={styles.label}>Start Date:</Text>
       {Platform.OS !== 'ios' && (
-        <Button onPress={() => setShowStartDatePicker(true)} title={formatDate(startDate)} color="#555" />
+        <Button onPress={() => setShowStartDatePicker(true)} title={formatDateLong(startDate)} color="#555" />
       )}
       {(showStartDatePicker || Platform.OS === 'ios') && (
         <DateTimePicker
@@ -131,7 +129,7 @@ const AddGoalScreen = () => {
       {/* --- End Date --- */}
       <Text style={styles.label}>End Date:</Text>
       {Platform.OS !== 'ios' && (
-        <Button onPress={() => setShowEndDatePicker(true)} title={formatDate(endDate)} color="#555" />
+        <Button onPress={() => setShowEndDatePicker(true)} title={formatDateLong(endDate)} color="#555" />
       )}
       {(showEndDatePicker || Platform.OS === 'ios') && (
         <DateTimePicker

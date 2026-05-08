@@ -4,9 +4,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import { Alert, Platform } from 'react-native';
 import { StorageService } from './StorageService';
 import { STORAGE_KEYS } from '../constants/StorageKeys';
-
-const BACKUP_VERSION = 1;
-const APP_IDENTIFIER = 'com.uac.Goals';
+import { BACKUP_VERSION, APP_IDENTIFIER } from '../constants/Config';
 
 /**
  * Creates a backup of all app data and triggers a save/share operation.
