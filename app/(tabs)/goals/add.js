@@ -17,7 +17,12 @@ import { Colors } from '../../../constants/Colors';
 const AddGoalScreen = () => {
   const [goalName, setGoalName] = useState('');
   const [startDate, setStartDate] = useState(new Date());
-  const [endDate, setEndDate] = useState(new Date());
+  
+  const defaultEndDate = new Date();
+  defaultEndDate.setDate(defaultEndDate.getDate() + (12 * 7));
+  const [endDate, setEndDate] = useState(defaultEndDate);
+  
+  const [weeksLength, setWeeksLength] = useState('12');
   const [showStartDatePicker, setShowStartDatePicker] = useState(false);
   const [showEndDatePicker, setShowEndDatePicker] = useState(false);
 
@@ -28,7 +33,13 @@ const AddGoalScreen = () => {
     const currentDate = selectedDate || startDate;
     setShowStartDatePicker(Platform.OS === 'ios');
     setStartDate(currentDate);
-    if (currentDate > endDate) {
+    
+    const wks = parseFloat(weeksLength) || 0;
+    if (wks > 0) {
+        const newEndDate = new Date(currentDate);
+        newEndDate.setDate(newEndDate.getDate() + Math.round(wks * 7));
+        setEndDate(newEndDate);
+    } else if (currentDate > endDate) {
       setEndDate(currentDate);
     }
   };
@@ -37,6 +48,21 @@ const AddGoalScreen = () => {
     const currentDate = selectedDate || endDate;
     setShowEndDatePicker(Platform.OS === 'ios');
     setEndDate(currentDate);
+    
+    const diffTime = currentDate.getTime() - startDate.getTime();
+    const diffDays = Math.max(0, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
+    const weeks = diffDays / 7;
+    setWeeksLength(weeks.toFixed(1).replace('.0', ''));
+  };
+
+  const onWeeksLengthChange = (text) => {
+      setWeeksLength(text);
+      const wks = parseFloat(text);
+      if (!isNaN(wks) && wks >= 0) {
+          const newEndDate = new Date(startDate);
+          newEndDate.setDate(newEndDate.getDate() + Math.round(wks * 7));
+          setEndDate(newEndDate);
+      }
   };
 
   const handleSaveGoal = async () => {
@@ -121,6 +147,16 @@ const AddGoalScreen = () => {
       {Platform.OS === 'ios' && showEndDatePicker && (
         <Button title="Done" onPress={() => setShowEndDatePicker(false)} />
       )}
+
+      {/* --- Duration in Weeks --- */}
+      <Text style={styles.label}>Duration (Weeks):</Text>
+      <TextInput
+        style={styles.input}
+        placeholder="e.g. 12"
+        keyboardType="numeric"
+        value={weeksLength}
+        onChangeText={onWeeksLengthChange}
+      />
 
       <View style={styles.buttonContainer}>
         <Button title="Save Goal" onPress={handleSaveGoal} color={Colors.palette.success} />

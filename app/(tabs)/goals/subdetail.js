@@ -37,6 +37,41 @@ const getWeeksBetweenDates = (startDateStr, endDateStr) => {
   return weeks;
 };
 
+const rebuildParentWeeks = (goalObj) => {
+  if (!goalObj) return {};
+  const exclusions = (goalObj.subgoals || []).map((sg) => ({
+    start: sg.startDate,
+    end: sg.endDate,
+  })).sort((a, b) => new Date(a.start) - new Date(b.start));
+
+  const res = {};
+  let weekIdx = 0;
+  const pushSeg = (s, e) => {
+    const weeksSeg = getWeeksBetweenDates(s, e);
+    Object.keys(weeksSeg).forEach((wkKey) => {
+      res[`week_${weekIdx}`] = weeksSeg[wkKey];
+      weekIdx += 1;
+    });
+  };
+
+  let cur = new Date(goalObj.startDate + 'T00:00:00Z');
+  const end = new Date(goalObj.endDate + 'T00:00:00Z');
+
+  exclusions.forEach((ex) => {
+    const exStart = new Date(ex.start + 'T00:00:00Z');
+    const exEnd = new Date(ex.end + 'T00:00:00Z');
+    if (cur <= exStart) {
+      const segEnd = new Date(exStart);
+      segEnd.setUTCDate(segEnd.getUTCDate() - 1);
+      if (cur <= segEnd) pushSeg(cur.toISOString().split('T')[0], segEnd.toISOString().split('T')[0]);
+    }
+    cur = new Date(exEnd);
+    cur.setUTCDate(cur.getUTCDate() + 1);
+  });
+  if (cur <= end) pushSeg(cur.toISOString().split('T')[0], goalObj.endDate);
+  return res;
+};
+
 const SubGoalDetailScreen = () => {
   const { goalId, subGoalId } = useLocalSearchParams();
   const router = useRouter();
@@ -161,6 +196,48 @@ const SubGoalDetailScreen = () => {
     return total > 0 ? completed / total : 0;
   }, [subGoal]);
 
+  const handleConvert = () => {
+    Alert.alert(
+      "Convert to Standalone Goal",
+      `This will remove this subgoal from "${parentGoal.name}" and restore its timeline to the parent goal. Proceed?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Proceed", onPress: confirmConvert }
+      ]
+    );
+  };
+
+  const confirmConvert = async () => {
+    try {
+      const stored = await AsyncStorage.getItem('@goals');
+      let allGoals = stored ? JSON.parse(stored) : [];
+      const pIdx = allGoals.findIndex((g) => g.id === goalId);
+      if (pIdx === -1) return;
+      
+      const parent = allGoals[pIdx];
+      parent.subgoals = (parent.subgoals || []).filter(s => s.id !== subGoalId);
+      
+      parent.weeks = parent.subgoals.length > 0 
+          ? rebuildParentWeeks(parent) 
+          : getWeeksBetweenDates(parent.startDate, parent.endDate);
+          
+      const standaloneGoal = {
+          ...subGoal,
+          subgoals: [],
+      };
+      
+      allGoals.push(standaloneGoal);
+      allGoals[pIdx] = parent;
+      
+      await AsyncStorage.setItem('@goals', JSON.stringify(allGoals));
+      
+      router.replace('/goals');
+    } catch (e) {
+      console.error(e);
+      Alert.alert("Error", "Could not convert.");
+    }
+  };
+
   const formatDate = (str) => new Date(str + 'T00:00:00Z').toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 
   if (loading || !subGoal) {
@@ -208,6 +285,11 @@ const SubGoalDetailScreen = () => {
               </View>
             );
           })}
+          
+        <TouchableOpacity style={styles.convertBtn} onPress={handleConvert}>
+          <Text style={styles.convertBtnText}>Convert to Standalone Goal</Text>
+        </TouchableOpacity>
+        <View style={{height: 40}} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -233,7 +315,9 @@ const styles = StyleSheet.create({
   addTaskRow: { flexDirection: 'row', alignItems: 'center', marginTop: 10, borderTopWidth: 1, borderTopColor: '#eee', paddingTop: 10 },
   taskInput: { flex: 1, borderWidth: 1, borderColor: '#ccc', borderRadius: 5, paddingVertical: 6, paddingHorizontal: 10, fontSize: 14 },
   addBtn: { backgroundColor: '#f4511e', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 5, marginLeft: 8 },
-  addBtnTxt: { color: '#fff', fontSize: 18, fontWeight: 'bold' }
+  addBtnTxt: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
+  convertBtn: { backgroundColor: '#34495e', padding: 15, borderRadius: 10, marginHorizontal: 18, alignItems: 'center', marginTop: 10 },
+  convertBtnText: { color: '#fff', fontSize: 16, fontWeight: 'bold' }
 });
 
 export default SubGoalDetailScreen;

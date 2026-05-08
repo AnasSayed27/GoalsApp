@@ -8,8 +8,10 @@ import {
   TouchableOpacity,
   Alert,
   SafeAreaView,
-  Keyboard
+  Keyboard,
+  Modal
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Progress from 'react-native-progress';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useFocusEffect, useLocalSearchParams, useRouter, Stack } from 'expo-router';
@@ -47,6 +49,20 @@ const GoalDetailScreen = () => {
   const [goal, setGoal] = useState(null);
   const [newTaskTexts, setNewTaskTexts] = useState({});
   const [loading, setLoading] = useState(true);
+
+  // Modal states
+  const [isAddModalVisible, setIsAddModalVisible] = useState(false);
+  const [addModalWeekKey, setAddModalWeekKey] = useState(null);
+  const [addModalDraftTarget, setAddModalDraftTarget] = useState('');
+  const [addModalDraftUnit, setAddModalDraftUnit] = useState('');
+
+  const [isUpdateModalVisible, setIsUpdateModalVisible] = useState(false);
+  const [updateModalWeekKey, setUpdateModalWeekKey] = useState(null);
+  const [updateModalTask, setUpdateModalTask] = useState(null);
+  const [updateModalDraftProgress, setUpdateModalDraftProgress] = useState('');
+
+  const [isConvertModalVisible, setIsConvertModalVisible] = useState(false);
+  const [selectedParentId, setSelectedParentId] = useState(null);
 
   // Load goal data from the hook
   useFocusEffect(
@@ -137,14 +153,34 @@ const GoalDetailScreen = () => {
   };
 
   // --- Task Management ---
-  const handleAddTask = async (weekKey) => {
+  const triggerAddModal = (weekKey) => {
     const textToAdd = newTaskTexts[weekKey]?.trim();
     if (!textToAdd) {
-      Alert.alert("Input Needed", "Please enter a task description.");
+      Alert.alert("Input Needed", "Please enter a tactic description first.");
       return;
     }
+    setAddModalWeekKey(weekKey);
+    setAddModalDraftTarget('');
+    setAddModalDraftUnit('');
+    setIsAddModalVisible(true);
+  };
+
+  const confirmAddTask = async () => {
+    const weekKey = addModalWeekKey;
+    const textToAdd = newTaskTexts[weekKey]?.trim();
+    if (!textToAdd) return;
+    
+    const targetValStr = addModalDraftTarget.trim();
+    const unitStr = addModalDraftUnit.trim();
+
     const updatedGoal = { ...goal };
     const newTask = { id: Date.now().toString(), text: textToAdd, completed: false };
+
+    if (targetValStr && !isNaN(Number(targetValStr))) {
+      newTask.targetValue = Number(targetValStr);
+      newTask.currentProgress = 0;
+      newTask.unit = unitStr || '';
+    }
 
     if (!updatedGoal.weeks[weekKey].tasks) { updatedGoal.weeks[weekKey].tasks = []; }
     updatedGoal.weeks[weekKey].tasks.push(newTask);
@@ -153,7 +189,110 @@ const GoalDetailScreen = () => {
     await updateGoal(updatedGoal); // Persist
 
     setNewTaskTexts(prev => ({ ...prev, [weekKey]: '' }));
+    setIsAddModalVisible(false);
     Keyboard.dismiss();
+  };
+
+  const triggerUpdateModal = (weekKey, task) => {
+    setUpdateModalWeekKey(weekKey);
+    setUpdateModalTask(task);
+    setUpdateModalDraftProgress((task.currentProgress || 0).toString());
+    setIsUpdateModalVisible(true);
+  };
+
+  const confirmUpdateProgress = async () => {
+    if (!updateModalTask || !updateModalWeekKey) return;
+    
+    const newProgressStr = updateModalDraftProgress.trim();
+    if (!newProgressStr || isNaN(Number(newProgressStr))) {
+        Alert.alert("Invalid Input", "Please enter a valid number.");
+        return;
+    }
+
+    let newProgress = Number(newProgressStr);
+    if (newProgress < 0) newProgress = 0;
+    if (newProgress > updateModalTask.targetValue) newProgress = updateModalTask.targetValue;
+
+    const updatedGoal = { ...goal };
+    const weekTasks = updatedGoal.weeks[updateModalWeekKey].tasks;
+    const taskIndex = weekTasks.findIndex(t => t.id === updateModalTask.id);
+    
+    if (taskIndex !== -1) {
+      const oldProgress = weekTasks[taskIndex].currentProgress || 0;
+      const diff = newProgress - oldProgress;
+      
+      const todayStr = new Date().toISOString().split('T')[0];
+      if (!weekTasks[taskIndex].dailyLogs) weekTasks[taskIndex].dailyLogs = {};
+      weekTasks[taskIndex].dailyLogs[todayStr] = (weekTasks[taskIndex].dailyLogs[todayStr] || 0) + diff;
+      if (weekTasks[taskIndex].dailyLogs[todayStr] < 0) weekTasks[taskIndex].dailyLogs[todayStr] = 0;
+
+      weekTasks[taskIndex].currentProgress = newProgress;
+      if (newProgress === updateModalTask.targetValue) {
+          weekTasks[taskIndex].completed = true;
+      } else {
+          weekTasks[taskIndex].completed = false;
+      }
+      
+      setGoal(updatedGoal);
+      await updateGoal(updatedGoal);
+    }
+    
+    setIsUpdateModalVisible(false);
+  };
+
+  const handleCopyToNextWeek = async () => {
+      if (!updateModalTask || !updateModalWeekKey) return;
+      
+      const currentWeekIndex = parseInt(updateModalWeekKey.split('_')[1]);
+      const nextWeekKey = `week_${currentWeekIndex + 1}`;
+      
+      const updatedGoal = { ...goal };
+      
+      if (!updatedGoal.weeks[nextWeekKey]) {
+          Alert.alert("Notice", "This is the final week. Cannot copy to next week.");
+          return;
+      }
+      
+      const newTask = {
+          ...updateModalTask,
+          id: Date.now().toString(),
+          currentProgress: 0,
+          completed: false,
+          dailyLogs: {},
+          completionDate: null
+      };
+      
+      if (!updatedGoal.weeks[nextWeekKey].tasks) {
+          updatedGoal.weeks[nextWeekKey].tasks = [];
+      }
+      
+      updatedGoal.weeks[nextWeekKey].tasks.push(newTask);
+      
+      setGoal(updatedGoal);
+      await updateGoal(updatedGoal);
+      
+      Alert.alert("Success", "Tactic copied to the next week!");
+      setIsUpdateModalVisible(false);
+  };
+
+  const handleReorderTask = async (weekKey, taskIndex, direction) => {
+    const updatedGoal = { ...goal };
+    const weekTasks = updatedGoal.weeks[weekKey].tasks;
+    
+    if (direction === 'up' && taskIndex > 0) {
+      const temp = weekTasks[taskIndex];
+      weekTasks[taskIndex] = weekTasks[taskIndex - 1];
+      weekTasks[taskIndex - 1] = temp;
+    } else if (direction === 'down' && taskIndex < weekTasks.length - 1) {
+      const temp = weekTasks[taskIndex];
+      weekTasks[taskIndex] = weekTasks[taskIndex + 1];
+      weekTasks[taskIndex + 1] = temp;
+    } else {
+      return;
+    }
+    
+    setGoal(updatedGoal);
+    await updateGoal(updatedGoal);
   };
 
   const handleDeleteTask = useCallback((weekKey, taskId) => {
@@ -176,9 +315,71 @@ const GoalDetailScreen = () => {
     const taskIndex = weekTasks.findIndex(task => task.id === taskId);
     if (taskIndex !== -1) {
       weekTasks[taskIndex].completed = !weekTasks[taskIndex].completed;
+      const todayStr = new Date().toISOString().split('T')[0];
+      weekTasks[taskIndex].completionDate = weekTasks[taskIndex].completed ? todayStr : null;
       setGoal(updatedGoal);
       await updateGoal(updatedGoal);
     }
+  };
+
+  const handleConvertGoal = () => {
+      const parentGoal = goals.find(g => g.id === selectedParentId);
+      if (!parentGoal) return;
+
+      const sStart = new Date(goal.startDate + 'T00:00:00Z');
+      const sEnd = new Date(goal.endDate + 'T00:00:00Z');
+      const diffTime = Math.abs(sEnd - sStart);
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+      const consumedWeeks = Math.max(1, Math.ceil(diffDays / 7));
+
+      Alert.alert(
+          "Confirm Conversion",
+          `This will consume approximately ${consumedWeeks} weeks from the parent goal "${parentGoal.name}". Proceed?`,
+          [
+              { text: "Cancel", style: "cancel" },
+              { text: "Proceed", onPress: () => confirmConvertGoal(parentGoal) }
+          ]
+      );
+  };
+
+  const confirmConvertGoal = async (parentGoal) => {
+      try {
+          const stored = await AsyncStorage.getItem('@goals');
+          let allGoals = stored ? JSON.parse(stored) : [];
+          
+          const pIdx = allGoals.findIndex((g) => g.id === selectedParentId);
+          const currentIdx = allGoals.findIndex((g) => g.id === goal.id);
+          
+          if (pIdx === -1 || currentIdx === -1) return;
+          
+          const parentToUpdate = allGoals[pIdx];
+          const goalToMove = allGoals[currentIdx];
+          
+          if (!parentToUpdate.subgoals) parentToUpdate.subgoals = [];
+          
+          // Clear subgoals of the moving goal to prevent deep nesting issues
+          goalToMove.subgoals = [];
+          
+          parentToUpdate.subgoals.push(goalToMove);
+          parentToUpdate.weeks = rebuildParentWeeks(parentToUpdate);
+          
+          // Remove the moved goal from root
+          allGoals = allGoals.filter(g => g.id !== goal.id);
+          
+          // Re-find parent index in filtered list and update it
+          const newPIdx = allGoals.findIndex((g) => g.id === selectedParentId);
+          if (newPIdx !== -1) {
+              allGoals[newPIdx] = parentToUpdate;
+          }
+          
+          await AsyncStorage.setItem('@goals', JSON.stringify(allGoals));
+          
+          setIsConvertModalVisible(false);
+          router.replace('/goals');
+      } catch (e) {
+          console.error(e);
+          Alert.alert("Error", "Could not convert.");
+      }
   };
 
   const handleDeleteSubGoal = useCallback((subId) => {
@@ -207,7 +408,12 @@ const GoalDetailScreen = () => {
         Object.values(obj.weeks).forEach(w => {
           if (w.tasks && Array.isArray(w.tasks)) {
             total += w.tasks.length;
-            completed += w.tasks.filter(t => t.completed).length;
+            completed += w.tasks.reduce((sum, task) => {
+                if (task.targetValue) {
+                    return sum + Math.min((task.currentProgress || 0) / task.targetValue, 1);
+                }
+                return sum + (task.completed ? 1 : 0);
+            }, 0);
           }
         });
       }
@@ -294,7 +500,12 @@ const GoalDetailScreen = () => {
           .sort(([keyA], [keyB]) => parseInt(keyA.split('_')[1]) - parseInt(keyB.split('_')[1]))
           .map(([weekKey, weekData], idx) => {
             const weekProgress = (weekData.tasks && weekData.tasks.length > 0)
-              ? weekData.tasks.filter(task => task.completed).length / weekData.tasks.length
+              ? weekData.tasks.reduce((sum, task) => {
+                  if (task.targetValue) {
+                      return sum + Math.min((task.currentProgress || 0) / task.targetValue, 1);
+                  }
+                  return sum + (task.completed ? 1 : 0);
+              }, 0) / weekData.tasks.length
               : 0;
             return (
               <View key={weekKey} style={styles.weekCard}>
@@ -316,47 +527,189 @@ const GoalDetailScreen = () => {
                   animated={true}
                 />
                 {/* Task List */}
-                {(weekData.tasks || []).map((task) => (
-                  <View key={task.id} style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <TouchableOpacity
-                      style={[styles.taskItem, task.completed && styles.taskItemCompleted, { flex: 1 }]}
-                      onPress={() => handleToggleTask(weekKey, task.id)}
-                      activeOpacity={0.7}
-                    >
-                      <View style={[styles.checkbox, task.completed && styles.checkboxCompleted]}>
-                        {task.completed && <View style={styles.checkboxInner} />}
-                      </View>
-                      <Text style={[styles.taskText, task.completed && styles.taskTextCompleted]}>
-                        {task.text}
-                      </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={() => handleDeleteTask(weekKey, task.id)} style={{ marginLeft: 8, padding: 8 }}>
-                      <MaterialCommunityIcons name="delete-outline" size={22} color={Colors.palette.danger} />
-                    </TouchableOpacity>
+                {(weekData.tasks || []).map((task, taskIndex, arr) => (
+                  <View key={task.id} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: task.targetValue ? 12 : 0 }}>
+                    {task.targetValue ? (
+                        <TouchableOpacity 
+                          style={[styles.taskItem, { flex: 1, flexDirection: 'column', alignItems: 'stretch', paddingVertical: 12, borderBottomWidth: 0, backgroundColor: 'rgba(52, 152, 219, 0.03)', borderRadius: 8, paddingHorizontal: 12 }]}
+                          onPress={() => triggerUpdateModal(weekKey, task)}
+                          onLongPress={() => handleDeleteTask(weekKey, task.id)}
+                          delayLongPress={500}
+                          activeOpacity={0.7}
+                        >
+                           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                               <Text style={[styles.taskText, task.completed && styles.taskTextCompleted, { fontWeight: '600' }]}>{task.text}</Text>
+                               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                   <Text style={styles.progressText}>{task.currentProgress || 0} / {task.targetValue} <Text style={{fontSize: 10, color: '#888'}}>{task.unit}</Text></Text>
+                               </View>
+                           </View>
+                           <Progress.Bar progress={(task.currentProgress || 0) / task.targetValue} width={null} color={task.completed ? Colors.palette.success : Colors.palette.primary} unfilledColor="#e0e0e0" borderWidth={0} height={6} borderRadius={3} style={{ marginTop: 10 }} animated={true} />
+                        </TouchableOpacity>
+                    ) : (
+                        <TouchableOpacity
+                          style={[styles.taskItem, task.completed && styles.taskItemCompleted, { flex: 1 }]}
+                          onPress={() => handleToggleTask(weekKey, task.id)}
+                          onLongPress={() => handleDeleteTask(weekKey, task.id)}
+                          delayLongPress={500}
+                          activeOpacity={0.7}
+                        >
+                          <View style={[styles.checkbox, task.completed && styles.checkboxCompleted]}>
+                            {task.completed && <View style={styles.checkboxInner} />}
+                          </View>
+                          <Text style={[styles.taskText, task.completed && styles.taskTextCompleted]}>
+                            {task.text}
+                          </Text>
+                        </TouchableOpacity>
+                    )}
+                    <View style={{ flexDirection: 'row', alignItems: 'center', paddingLeft: 4 }}>
+                        <View style={{ flexDirection: 'column' }}>
+                            <TouchableOpacity onPress={() => handleReorderTask(weekKey, taskIndex, 'up')} disabled={taskIndex === 0} style={{ padding: 2, opacity: taskIndex === 0 ? 0.3 : 1 }}>
+                                <MaterialCommunityIcons name="chevron-up" size={24} color="#666" />
+                            </TouchableOpacity>
+                            <TouchableOpacity onPress={() => handleReorderTask(weekKey, taskIndex, 'down')} disabled={taskIndex === arr.length - 1} style={{ padding: 2, opacity: taskIndex === arr.length - 1 ? 0.3 : 1 }}>
+                                <MaterialCommunityIcons name="chevron-down" size={24} color="#666" />
+                            </TouchableOpacity>
+                        </View>
+                    </View>
                   </View>
                 ))}
                 {(weekData.tasks || []).length === 0 && (
-                  <Text style={styles.noTasksText}>No tasks added for this week yet.</Text>
+                  <Text style={styles.noTasksText}>No tactics added for this week yet.</Text>
                 )}
                 {/* Add Task Input */}
                 <View style={styles.addTaskContainer}>
-                  <TextInput
-                    style={styles.taskInput}
-                    placeholder="Add a new task..."
-                    value={newTaskTexts[weekKey] || ''}
-                    onChangeText={(text) => setNewTaskTexts(prev => ({ ...prev, [weekKey]: text }))}
-                    onSubmitEditing={() => handleAddTask(weekKey)}
-                    placeholderTextColor="#aaa"
-                  />
-                  <TouchableOpacity onPress={() => handleAddTask(weekKey)} style={styles.addButton}>
+                  <View style={{ flex: 1 }}>
+                      <TextInput
+                        style={styles.taskInput}
+                        placeholder="Add a new tactic/task..."
+                        value={newTaskTexts[weekKey] || ''}
+                        onChangeText={(text) => setNewTaskTexts(prev => ({ ...prev, [weekKey]: text }))}
+                        onSubmitEditing={() => triggerAddModal(weekKey)}
+                        placeholderTextColor="#aaa"
+                      />
+                  </View>
+                  <TouchableOpacity onPress={() => triggerAddModal(weekKey)} style={[styles.addButton, { marginLeft: 10, alignSelf: 'stretch' }]}>
                     <Text style={styles.addButtonText}>+</Text>
                   </TouchableOpacity>
                 </View>
               </View>
             );
           })}
+        <TouchableOpacity style={styles.convertBtn} onPress={() => setIsConvertModalVisible(true)}>
+          <Text style={styles.convertBtnText}>Convert to Subgoal</Text>
+        </TouchableOpacity>
         <View style={{ height: 40 }} />
       </ScrollView>
+
+      {/* Convert to Subgoal Modal */}
+      <Modal visible={isConvertModalVisible} transparent={true} animationType="fade" onRequestClose={() => setIsConvertModalVisible(false)}>
+          <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setIsConvertModalVisible(false)}>
+              <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
+                  <Text style={styles.modalTitle}>Convert to Subgoal</Text>
+                  <Text style={styles.modalSubtitle}>Select the parent goal:</Text>
+                  
+                  <ScrollView style={{ maxHeight: 200, marginBottom: 16 }}>
+                      {goals.filter(g => g.id !== goalId).map(g => (
+                          <TouchableOpacity 
+                              key={g.id} 
+                              style={[styles.parentGoalOption, selectedParentId === g.id && styles.parentGoalOptionSelected]}
+                              onPress={() => setSelectedParentId(g.id)}
+                          >
+                              <Text style={[styles.parentGoalOptionText, selectedParentId === g.id && styles.parentGoalOptionTextSelected]}>{g.name}</Text>
+                          </TouchableOpacity>
+                      ))}
+                      {goals.filter(g => g.id !== goalId).length === 0 && (
+                          <Text style={{ color: '#888', fontStyle: 'italic' }}>No other active goals found.</Text>
+                      )}
+                  </ScrollView>
+                  
+                  <View style={styles.modalActionRow}>
+                      <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setIsConvertModalVisible(false)}>
+                          <Text style={styles.modalCancelBtnText}>Cancel</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={[styles.modalSaveBtn, !selectedParentId && {opacity: 0.5}]} onPress={handleConvertGoal} disabled={!selectedParentId}>
+                          <Text style={styles.modalSaveBtnText}>Convert</Text>
+                      </TouchableOpacity>
+                  </View>
+              </View>
+          </TouchableOpacity>
+      </Modal>
+
+      {/* Add Tactic Modal */}
+      <Modal visible={isAddModalVisible} transparent={true} animationType="fade" onRequestClose={() => setIsAddModalVisible(false)}>
+          <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setIsAddModalVisible(false)}>
+              <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
+                  <Text style={styles.modalTitle}>Set Tactic Target (Optional)</Text>
+                  <Text style={styles.modalSubtitle}>If you just want a checkbox, leave these blank.</Text>
+                  
+                  <View style={styles.modalInputGroup}>
+                      <Text style={styles.modalLabel}>Numeric Target</Text>
+                      <TextInput
+                          style={styles.modalInput}
+                          placeholder="e.g. 70"
+                          value={addModalDraftTarget}
+                          onChangeText={setAddModalDraftTarget}
+                          keyboardType="numeric"
+                      />
+                  </View>
+                  <View style={styles.modalInputGroup}>
+                      <Text style={styles.modalLabel}>Unit (optional)</Text>
+                      <TextInput
+                          style={styles.modalInput}
+                          placeholder="e.g. calls, hours"
+                          value={addModalDraftUnit}
+                          onChangeText={setAddModalDraftUnit}
+                      />
+                  </View>
+                  
+                  <View style={styles.modalActionRow}>
+                      <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setIsAddModalVisible(false)}>
+                          <Text style={styles.modalCancelBtnText}>Cancel</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={styles.modalSaveBtn} onPress={confirmAddTask}>
+                          <Text style={styles.modalSaveBtnText}>Save</Text>
+                      </TouchableOpacity>
+                  </View>
+              </View>
+          </TouchableOpacity>
+      </Modal>
+
+      {/* Update Progress Modal */}
+      <Modal visible={isUpdateModalVisible} transparent={true} animationType="fade" onRequestClose={() => setIsUpdateModalVisible(false)}>
+          <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setIsUpdateModalVisible(false)}>
+              <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
+                      <View style={{ flex: 1, paddingRight: 10 }}>
+                          <Text style={styles.modalTitle}>Log Progress</Text>
+                          <Text style={styles.modalSubtitle}>{updateModalTask?.text}</Text>
+                      </View>
+                      <TouchableOpacity onPress={handleCopyToNextWeek} style={{ backgroundColor: '#e8f4fd', paddingVertical: 6, paddingHorizontal: 10, borderRadius: 6, flexDirection: 'row', alignItems: 'center' }}>
+                          <MaterialCommunityIcons name="content-copy" size={16} color="#3498db" style={{ marginRight: 4 }} />
+                          <Text style={{ color: '#3498db', fontSize: 12, fontWeight: 'bold' }}>Copy Next</Text>
+                      </TouchableOpacity>
+                  </View>
+                  
+                  <View style={styles.modalInputGroup}>
+                      <Text style={styles.modalLabel}>Current Progress (out of {updateModalTask?.targetValue} {updateModalTask?.unit})</Text>
+                      <TextInput
+                          style={styles.modalInput}
+                          value={updateModalDraftProgress}
+                          onChangeText={setUpdateModalDraftProgress}
+                          keyboardType="numeric"
+                      />
+                  </View>
+                  
+                  <View style={styles.modalActionRow}>
+                      <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setIsUpdateModalVisible(false)}>
+                          <Text style={styles.modalCancelBtnText}>Cancel</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={styles.modalSaveBtn} onPress={confirmUpdateProgress}>
+                          <Text style={styles.modalSaveBtnText}>Update</Text>
+                      </TouchableOpacity>
+                  </View>
+              </View>
+          </TouchableOpacity>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -578,6 +931,129 @@ const styles = StyleSheet.create({
   addButtonText: {
     color: '#fff',
     fontSize: 18,
+    fontWeight: 'bold',
+  },
+  progressBtn: {
+    backgroundColor: '#eee',
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginHorizontal: 4,
+  },
+  progressBtnText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  progressText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+    marginHorizontal: 8,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    width: '80%',
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    elevation: 8,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 4,
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 20,
+  },
+  modalInputGroup: {
+    marginBottom: 16,
+  },
+  modalLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#444',
+    marginBottom: 6,
+  },
+  modalInput: {
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    backgroundColor: '#fafafa',
+  },
+  modalActionRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    marginTop: 10,
+  },
+  modalCancelBtn: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    marginRight: 10,
+  },
+  modalCancelBtnText: {
+    fontSize: 16,
+    color: '#666',
+    fontWeight: '600',
+  },
+  modalSaveBtn: {
+    backgroundColor: Colors.palette.primary,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+  },
+  modalSaveBtnText: {
+    fontSize: 16,
+    color: '#fff',
+    fontWeight: 'bold',
+  },
+  convertBtn: {
+    backgroundColor: '#34495e',
+    padding: 15,
+    borderRadius: 10,
+    marginHorizontal: 18,
+    alignItems: 'center',
+    marginTop: 10,
+  },
+  convertBtnText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  parentGoalOption: {
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#eee',
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  parentGoalOptionSelected: {
+    borderColor: Colors.palette.primary,
+    backgroundColor: 'rgba(52, 152, 219, 0.05)',
+  },
+  parentGoalOptionText: {
+    fontSize: 16,
+    color: '#333',
+  },
+  parentGoalOptionTextSelected: {
+    color: Colors.palette.primary,
     fontWeight: 'bold',
   }
 });

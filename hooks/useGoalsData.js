@@ -80,7 +80,12 @@ export const useGoalsData = () => {
                 Object.values(g.weeks).forEach((w) => {
                     if (w.tasks && Array.isArray(w.tasks)) {
                         total += w.tasks.length;
-                        completed += w.tasks.filter((t) => t.completed).length;
+                        completed += w.tasks.reduce((sum, t) => {
+                            if (t.targetValue) {
+                                return sum + Math.min((t.currentProgress || 0) / t.targetValue, 1);
+                            }
+                            return sum + (t.completed ? 1 : 0);
+                        }, 0);
                     }
                 });
             }

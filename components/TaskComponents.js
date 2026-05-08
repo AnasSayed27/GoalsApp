@@ -21,24 +21,33 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const DURATIONS = [0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5, 5.5, 6];
 
 // --- Progress Section ---
-export const ProgressSection = ({ completedDuration, totalDuration, progress }) => (
-    <View style={styles.progressSection}>
-        <Text style={styles.progressLabel}>Today's Progress</Text>
-        <Progress.Bar
-            progress={progress}
-            width={null}
-            height={12}
-            color={Colors.palette.primary}
-            unfilledColor="#e0e0e0"
-            borderWidth={0}
-            borderRadius={6}
-            style={styles.progressBar}
-        />
-        <Text style={styles.progressText}>
-            {completedDuration} / {totalDuration} hours ({Math.round(progress * 100)}%)
-        </Text>
-    </View>
-);
+export const ProgressSection = ({ completedDuration, totalDuration, progress, label = "Today's Progress", unit = "hours" }) => {
+    let barColor = Colors.palette.primary;
+    if (progress >= 0.85) {
+        barColor = Colors.palette.success;
+    } else if (progress > 0) {
+        barColor = Colors.palette.warning;
+    }
+
+    return (
+        <View style={styles.progressSection}>
+            <Text style={styles.progressLabel}>{label}</Text>
+            <Progress.Bar
+                progress={progress || 0}
+                width={null}
+                height={12}
+                color={barColor}
+                unfilledColor="#e0e0e0"
+                borderWidth={0}
+                borderRadius={6}
+                style={styles.progressBar}
+            />
+            <Text style={styles.progressText}>
+                {completedDuration} / {totalDuration} {unit} ({Math.round((progress || 0) * 100)}%)
+            </Text>
+        </View>
+    );
+};
 
 // --- Task Input Section ---
 export const TaskInput = ({ name, setName, duration, setDuration, onAdd }) => {
