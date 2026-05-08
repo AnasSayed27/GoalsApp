@@ -7,8 +7,8 @@
 
 import React from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
+import * as Progress from 'react-native-progress';
 import { Colors } from '../../constants/Colors';
-import ProgressBar from '../common/ProgressBar';
 import TacticItem from './TacticItem';
 import { calculateWeekProgress, isWeekComplete } from '../../utils/progressCalculator';
 import { formatDateShort } from '../../utils/dateHelpers';
@@ -53,10 +53,14 @@ const WeekCard = ({
             </View>
 
             {/* Progress */}
-            <ProgressBar
+            <Progress.Bar
                 progress={weekProgress}
+                width={null}
                 height={8}
                 color={weekProgress === 1 ? Colors.palette.success : '#ffa726'}
+                unfilledColor="#e0e0e0"
+                borderWidth={0}
+                borderRadius={4}
                 style={{ marginTop: 4, marginBottom: 10 }}
             />
 

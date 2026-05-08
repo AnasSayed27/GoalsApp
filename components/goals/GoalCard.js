@@ -7,7 +7,7 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
-import ProgressBar from '../common/ProgressBar';
+import * as Progress from 'react-native-progress';
 import { Colors } from '../../constants/Colors';
 
 /**
@@ -26,11 +26,14 @@ const GoalCard = ({ goal, onPress, onLongPress }) => (
         <Text style={styles.dates}>{`${goal.startDate} - ${goal.endDate}`}</Text>
 
         <View style={styles.progressRow}>
-            <ProgressBar
+            <Progress.Bar
                 progress={goal.progress || 0}
+                width={null}
                 height={14}
                 color={Colors.palette.success}
-                showPercent={false}
+                unfilledColor="#e0e0e0"
+                borderWidth={0}
+                borderRadius={7}
                 style={{ flex: 1 }}
             />
             <View style={styles.percentContainer}>
