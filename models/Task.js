@@ -5,6 +5,8 @@
  * NOT the tactics inside goals/weeks. For goal tactics, see Goal.js → createTactic().
  */
 
+import { generateId } from '../utils/idGenerator';
+
 /**
  * Creates a new daily Task object.
  *
@@ -24,7 +26,7 @@ export const createTask = ({ name, duration }) => {
     }
 
     return {
-        id: Date.now().toString(),
+        id: generateId('task'),
         name: name.trim(),
         duration: parsedDuration,
         completed: false,

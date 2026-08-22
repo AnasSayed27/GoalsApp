@@ -1,5 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+// Per-key queue mapping: key -> Promise chain
+const mutationLocks = new Map();
+
 export const StorageService = {
     /**
      * Save data to storage
@@ -29,6 +32,39 @@ export const StorageService = {
         } catch (e) {
             console.error(`StorageService: Failed to load from ${key}`, e);
             return defaultValue;
+        }
+    },
+
+    /**
+     * Atomically mutates a key in storage by serializing transformations through a Promise queue.
+     * Guarantees that concurrent read-modify-write operations on the same key do not overwrite each other.
+     *
+     * @param {string} key - AsyncStorage key
+     * @param {Function} transformFn - Synchronous or asynchronous function (currentValue) => updatedValue
+     * @param {any} [defaultValue=null] - Default value if key is missing
+     * @returns {Promise<any>} The updated value
+     */
+    mutate: async (key, transformFn, defaultValue = null) => {
+        const currentLock = mutationLocks.get(key) || Promise.resolve();
+
+        let releaseLock;
+        const nextLock = new Promise((resolve) => {
+            releaseLock = resolve;
+        });
+
+        mutationLocks.set(key, nextLock);
+
+        try {
+            await currentLock;
+            const currentData = await StorageService.get(key, defaultValue);
+            const transformedData = await transformFn(currentData);
+            await StorageService.save(key, transformedData);
+            return transformedData;
+        } finally {
+            releaseLock();
+            if (mutationLocks.get(key) === nextLock) {
+                mutationLocks.delete(key);
+            }
         }
     },
 

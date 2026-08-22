@@ -33,7 +33,38 @@ export const convertGoalToSubgoal = (allGoals, goalId, parentGoalId) => {
     const parentGoal = updatedGoals[parentIdx];
     const goalToMove = updatedGoals[goalIdx];
 
-    // Clear nested subgoals to prevent deep nesting
+    // Guard: Prevent silent child goal deletion
+    if (goalToMove.subgoals && goalToMove.subgoals.length > 0) {
+        return {
+            success: false,
+            updatedGoals: allGoals,
+            error: 'Cannot convert a goal that has subgoals. Remove or convert its subgoals first.',
+        };
+    }
+
+    // Guard: Validate date boundary containment within parent
+    if (goalToMove.startDate < parentGoal.startDate || goalToMove.endDate > parentGoal.endDate) {
+        return {
+            success: false,
+            updatedGoals: allGoals,
+            error: 'Goal timeframe must be within the parent goal timeframe.',
+        };
+    }
+
+    // Guard: Validate no overlap with existing parent subgoals
+    const existingSubgoals = parentGoal.subgoals || [];
+    const hasOverlap = existingSubgoals.some(sg => (
+        goalToMove.startDate <= sg.endDate && goalToMove.endDate >= sg.startDate
+    ));
+    if (hasOverlap) {
+        return {
+            success: false,
+            updatedGoals: allGoals,
+            error: 'Goal dates overlap with an existing subgoal in the parent goal.',
+        };
+    }
+
+    // Clear nested subgoals array
     goalToMove.subgoals = [];
 
     // Add to parent's subgoals

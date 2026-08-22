@@ -25,6 +25,7 @@ import { Colors } from '../../../constants/Colors';
 
 // Components
 import WeekCard from '../../../components/goals/WeekCard';
+import { ErrorBoundary } from '../../../components/common/ErrorBoundary';
 
 /**
  * Deep-clones a subgoal object to prevent mutation of nested weeks/tasks.
@@ -32,7 +33,9 @@ import WeekCard from '../../../components/goals/WeekCard';
 const deepClone = (obj) => JSON.parse(JSON.stringify(obj));
 
 const SubGoalDetailScreen = () => {
-  const { goalId, subGoalId } = useLocalSearchParams();
+  const params = useLocalSearchParams();
+  const goalId = params.goalId || params.id;
+  const subGoalId = params.subGoalId || params.subId;
   const router = useRouter();
 
   const [subGoal, setSubGoal] = useState(null);
@@ -47,15 +50,16 @@ const SubGoalDetailScreen = () => {
         if (!goalId || !subGoalId) {
           Alert.alert('Error', 'Missing parameters');
           if (router.canGoBack()) router.back();
+          else router.replace('/goals');
           return;
         }
         setLoading(true);
         try {
           const goals = await StorageService.get(STORAGE_KEYS.GOALS, []);
-          const parent = goals.find(g => g.id === goalId);
+          const parent = goals.find(g => String(g.id) === String(goalId));
           if (!parent) throw new Error('Parent goal not found');
           if (!parent.subgoals) parent.subgoals = [];
-          const sg = parent.subgoals.find(s => s.id === subGoalId);
+          const sg = parent.subgoals.find(s => String(s.id) === String(subGoalId));
           if (!sg) throw new Error('Sub-goal not found');
 
           // Ensure weeks exist
@@ -172,7 +176,11 @@ const SubGoalDetailScreen = () => {
               const result = convertSubgoalToGoal(allGoals, goalId, subGoalId);
               if (result.success) {
                 await GoalService.saveAllGoals(result.updatedGoals);
-                router.replace('/goals');
+                if (router.canGoBack()) {
+                  router.back();
+                } else {
+                  router.replace('/goals');
+                }
               } else {
                 Alert.alert('Error', result.error || 'Conversion failed.');
               }
@@ -250,4 +258,10 @@ const styles = StyleSheet.create({
   convertBtnText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
 });
 
-export default SubGoalDetailScreen;
+const SubGoalDetailScreenWithBoundary = (props) => (
+  <ErrorBoundary>
+    <SubGoalDetailScreen {...props} />
+  </ErrorBoundary>
+);
+
+export default SubGoalDetailScreenWithBoundary;

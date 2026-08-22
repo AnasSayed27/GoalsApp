@@ -5,6 +5,9 @@
  * Users can customize intervals per item.
  */
 
+import { generateId } from '../utils/idGenerator';
+import { addDays, getTodayString } from '../utils/dateHelpers';
+
 // Default spaced repetition intervals in days
 export const DEFAULT_INTERVALS = [1, 3, 7, 14, 30];
 
@@ -25,10 +28,10 @@ export const createRevisionItem = ({ text, intervals = null }) => {
         throw new Error('createRevisionItem: "text" is required and must be a non-empty string.');
     }
 
-    const today = new Date().toISOString().split('T')[0];
+    const today = getTodayString();
 
     return {
-        id: Date.now().toString(),
+        id: generateId('rev_item'),
         text: text.trim(),
         // The intervals this item follows (array of day-gaps)
         intervals: Array.isArray(intervals) && intervals.length > 0
@@ -38,6 +41,7 @@ export const createRevisionItem = ({ text, intervals = null }) => {
         currentStep: 0,
         // Date this item was first added (YYYY-MM-DD)
         createdDate: today,
+        createdAt: new Date().toISOString(),
         // Next revision due date (YYYY-MM-DD) — starts as today
         nextRevisionDate: today,
         // History of completed revisions: [{ date: 'YYYY-MM-DD', step: 0 }, ...]
@@ -64,10 +68,13 @@ export const createRevisionGroup = ({ name, items = [] }) => {
         throw new Error('createRevisionGroup: "name" is required and must be a non-empty string.');
     }
 
+    const today = getTodayString();
+
     return {
-        id: Date.now().toString(),
+        id: generateId('rev_group'),
         name: name.trim(),
-        createdDate: new Date().toISOString().split('T')[0],
+        createdDate: today,
+        createdAt: new Date().toISOString(),
         items: Array.isArray(items) ? items : [],
         isCollapsed: false,
     };
@@ -79,13 +86,13 @@ export const createRevisionGroup = ({ name, items = [] }) => {
 
 /**
  * Marks a revision item as revised today.
- * Advances to the next step and calculates the next revision date.
+ * Advances to the next step and calculates the next revision date using UTC addDays.
  *
  * @param {Object} item - The RevisionItem to update
  * @returns {Object} Updated RevisionItem (new object, does not mutate)
  */
 export const markRevised = (item) => {
-    const today = new Date().toISOString().split('T')[0];
+    const today = getTodayString();
     const updatedItem = { ...item };
 
     // Record this revision in history
@@ -102,11 +109,9 @@ export const markRevised = (item) => {
         updatedItem.isFullyRevised = true;
         updatedItem.nextRevisionDate = null;
     } else {
-        // Calculate next revision date
+        // Calculate next revision date using canonical UTC addDays to avoid timezone shift
         const daysUntilNext = updatedItem.intervals[updatedItem.currentStep];
-        const nextDate = new Date();
-        nextDate.setDate(nextDate.getDate() + daysUntilNext);
-        updatedItem.nextRevisionDate = nextDate.toISOString().split('T')[0];
+        updatedItem.nextRevisionDate = addDays(today, daysUntilNext);
         updatedItem.isFullyRevised = false;
     }
 
@@ -123,7 +128,7 @@ export const getRevisionStatus = (item) => {
     if (item.isFullyRevised) return 'completed';
     if (!item.nextRevisionDate) return 'completed';
 
-    const today = new Date().toISOString().split('T')[0];
+    const today = getTodayString();
     if (item.nextRevisionDate < today) return 'overdue';
     if (item.nextRevisionDate === today) return 'due_today';
     return 'upcoming';
@@ -139,9 +144,10 @@ export const normalizeRevisionGroup = (group) => {
     if (!group || typeof group !== 'object') return null;
 
     return {
-        id: group.id || Date.now().toString(),
+        id: group.id || generateId('rev_group'),
         name: group.name || 'Untitled Group',
-        createdDate: group.createdDate || new Date().toISOString().split('T')[0],
+        createdDate: group.createdDate || getTodayString(),
+        createdAt: group.createdAt || new Date().toISOString(),
         items: Array.isArray(group.items) ? group.items.map(normalizeRevisionItem) : [],
         isCollapsed: group.isCollapsed || false,
     };
@@ -154,12 +160,13 @@ export const normalizeRevisionItem = (item) => {
     if (!item || typeof item !== 'object') return null;
 
     return {
-        id: item.id || Date.now().toString(),
+        id: item.id || generateId('rev_item'),
         text: item.text || 'Untitled',
         intervals: Array.isArray(item.intervals) ? item.intervals : [...DEFAULT_INTERVALS],
         currentStep: item.currentStep || 0,
-        createdDate: item.createdDate || new Date().toISOString().split('T')[0],
-        nextRevisionDate: item.nextRevisionDate || new Date().toISOString().split('T')[0],
+        createdDate: item.createdDate || getTodayString(),
+        createdAt: item.createdAt || new Date().toISOString(),
+        nextRevisionDate: item.nextRevisionDate || getTodayString(),
         revisionHistory: Array.isArray(item.revisionHistory) ? item.revisionHistory : [],
         isFullyRevised: item.isFullyRevised || false,
     };

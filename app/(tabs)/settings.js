@@ -105,7 +105,8 @@ const SettingsScreen = () => {
                             STORAGE_KEYS.GOALS,
                             STORAGE_KEYS.TASKS,
                             STORAGE_KEYS.STREAKS,
-                            STORAGE_KEYS.LEGACY_STREAKS
+                            STORAGE_KEYS.REVISIONS,
+                            STORAGE_KEYS.LEGACY_STREAKS,
                         ]);
 
                         if (success) {

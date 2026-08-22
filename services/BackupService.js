@@ -6,6 +6,36 @@ import { StorageService } from './StorageService';
 import { STORAGE_KEYS } from '../constants/StorageKeys';
 import { BACKUP_VERSION, APP_IDENTIFIER } from '../constants/Config';
 
+export const MAX_AUTO_BACKUPS = 10;
+
+/**
+ * Prunes older auto-backup files in custom directory, keeping only the newest maxBackups.
+ *
+ * @param {string} dirUri - Directory URI
+ * @param {number} [maxBackups=MAX_AUTO_BACKUPS] - Max backups to keep
+ */
+export const pruneOldBackups = async (dirUri, maxBackups = MAX_AUTO_BACKUPS) => {
+    try {
+        if (!dirUri || !FileSystem.StorageAccessFramework) return;
+        const files = await FileSystem.StorageAccessFramework.readDirectoryAsync(dirUri);
+        const autoBackupFiles = files.filter(f => decodeURIComponent(f).includes('AutoBackup_'));
+
+        if (autoBackupFiles.length > maxBackups) {
+            autoBackupFiles.sort(); // Oldest timestamps first
+            const toDelete = autoBackupFiles.slice(0, autoBackupFiles.length - maxBackups);
+            for (const fileUri of toDelete) {
+                try {
+                    await FileSystem.StorageAccessFramework.deleteAsync(fileUri);
+                } catch (delErr) {
+                    console.warn('BackupService: Failed to delete old backup', fileUri, delErr);
+                }
+            }
+        }
+    } catch (err) {
+        console.warn('BackupService: Pruning old backups failed', err);
+    }
+};
+
 /**
  * Creates a backup of all app data and triggers a save/share operation.
  * @param {string} [customDirUri] - Optional specific directory URI (for auto-backup).
@@ -17,6 +47,7 @@ export const exportData = async (customDirUri = null) => {
         const streaksData = await StorageService.get(STORAGE_KEYS.STREAKS, {});
         const goalsData = await StorageService.get(STORAGE_KEYS.GOALS, []);
         const tasksData = await StorageService.get(STORAGE_KEYS.TASKS, []);
+        const revisionsData = await StorageService.get(STORAGE_KEYS.REVISIONS, []);
 
         // 2. Create a structured backup object
         const backupPayload = {
@@ -27,6 +58,7 @@ export const exportData = async (customDirUri = null) => {
                 [STORAGE_KEYS.STREAKS]: streaksData,
                 [STORAGE_KEYS.GOALS]: goalsData,
                 [STORAGE_KEYS.TASKS]: tasksData,
+                [STORAGE_KEYS.REVISIONS]: revisionsData,
             },
         };
 
@@ -46,6 +78,10 @@ export const exportData = async (customDirUri = null) => {
                 await FileSystem.writeAsStringAsync(fileUri, jsonContent, {
                     encoding: FileSystem.EncodingType.UTF8,
                 });
+
+                // Prune older backups to prevent unbounded storage leaks
+                await pruneOldBackups(customDirUri);
+
                 return true;
             } catch (autoError) {
                 console.error('BackupService: Auto-save failed', autoError);
@@ -243,6 +279,9 @@ export const importData = async () => {
         }
         if (dataToRestore[STORAGE_KEYS.TASKS] !== undefined) {
             await StorageService.save(STORAGE_KEYS.TASKS, dataToRestore[STORAGE_KEYS.TASKS]);
+        }
+        if (dataToRestore[STORAGE_KEYS.REVISIONS] !== undefined) {
+            await StorageService.save(STORAGE_KEYS.REVISIONS, dataToRestore[STORAGE_KEYS.REVISIONS]);
         }
 
         Alert.alert(

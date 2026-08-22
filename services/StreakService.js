@@ -17,7 +17,15 @@ import { getUTCDateString, getStartOfWeek } from '../utils/dateHelpers';
  * @returns {Promise<Object>} { heatmapData: {...} }
  */
 export const loadStreakData = async () => {
-    const raw = await StorageService.get(STORAGE_KEYS.STREAKS);
+    let raw = await StorageService.get(STORAGE_KEYS.STREAKS);
+    if (!raw) {
+        const legacy = await StorageService.get(STORAGE_KEYS.LEGACY_STREAKS);
+        if (legacy) {
+            const normalized = normalizeStreakData(legacy);
+            await StorageService.save(STORAGE_KEYS.STREAKS, normalized);
+            return normalized;
+        }
+    }
     return normalizeStreakData(raw);
 };
 

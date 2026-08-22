@@ -8,6 +8,10 @@
  * AsyncStorage data. Any new fields must have default values.
  */
 
+import { generateId } from '../utils/idGenerator';
+
+const ISO_DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+
 // ─────────────────────────────────────────────
 // TACTIC (aka "task" within a week)
 // ─────────────────────────────────────────────
@@ -32,7 +36,7 @@ export const createTactic = ({ text, targetValue = null, unit = '' }) => {
     }
 
     return {
-        id: Date.now().toString(),
+        id: generateId('tactic'),
         text: text.trim(),
         completed: false,
         // Numeric-target fields (only meaningful when targetValue is set)
@@ -59,7 +63,7 @@ export const copyTacticFresh = (sourceTactic) => {
     }
 
     return {
-        id: Date.now().toString(),
+        id: generateId('tactic'),
         text: sourceTactic.text,
         completed: false,
         targetValue: sourceTactic.targetValue || null,
@@ -86,6 +90,9 @@ export const copyTacticFresh = (sourceTactic) => {
 export const createWeek = ({ startDate, endDate, tasks = [] }) => {
     if (!startDate || !endDate) {
         throw new Error('createWeek: "startDate" and "endDate" are required.');
+    }
+    if (!ISO_DATE_REGEX.test(startDate) || !ISO_DATE_REGEX.test(endDate)) {
+        throw new Error('createWeek: "startDate" and "endDate" must be in YYYY-MM-DD format.');
     }
 
     return {
@@ -117,9 +124,15 @@ export const createGoal = ({ name, startDate, endDate, weeks = {}, subgoals = []
     if (!startDate || !endDate) {
         throw new Error('createGoal: "startDate" and "endDate" are required.');
     }
+    if (!ISO_DATE_REGEX.test(startDate) || !ISO_DATE_REGEX.test(endDate)) {
+        throw new Error('createGoal: "startDate" and "endDate" must be in YYYY-MM-DD format.');
+    }
+    if (endDate < startDate) {
+        throw new Error('createGoal: "endDate" cannot be before "startDate".');
+    }
 
     return {
-        id: Date.now().toString(),
+        id: generateId('goal'),
         name: name.trim(),
         startDate,
         endDate,
@@ -130,38 +143,87 @@ export const createGoal = ({ name, startDate, endDate, weeks = {}, subgoals = []
 };
 
 /**
+ * Normalizes daily logs object, trimming invalid values and filtering outside date bounds.
+ *
+ * @param {Object} dailyLogs - Raw logs object { 'YYYY-MM-DD': number }
+ * @param {string} [startDateStr=null] - Goal start date
+ * @param {string} [endDateStr=null] - Goal end date
+ * @returns {Object} Clean daily logs
+ */
+export const normalizeDailyLogs = (dailyLogs, startDateStr = null, endDateStr = null) => {
+    if (!dailyLogs || typeof dailyLogs !== 'object' || Array.isArray(dailyLogs)) {
+        return {};
+    }
+    const cleanLogs = {};
+
+    Object.entries(dailyLogs).forEach(([dateStr, value]) => {
+        if (ISO_DATE_REGEX.test(dateStr) && typeof value === 'number' && value >= 0) {
+            if (startDateStr && endDateStr) {
+                if (dateStr >= startDateStr && dateStr <= endDateStr) {
+                    cleanLogs[dateStr] = value;
+                }
+            } else {
+                cleanLogs[dateStr] = value;
+            }
+        }
+    });
+    return cleanLogs;
+};
+
+/**
  * Ensures a goal object loaded from storage has all required fields.
- * This handles backward compatibility — older stored goals may be missing fields.
+ * Handles backward compatibility, orphan subgoals, and cycle protection.
  *
  * @param {Object} goal - A raw goal from storage
- * @returns {Object} A normalized goal with all fields guaranteed
+ * @returns {Object|null} A normalized goal with all fields guaranteed
  */
 export const normalizeGoal = (goal) => {
-    if (!goal || typeof goal !== 'object') {
+    if (!goal || typeof goal !== 'object' || !goal.id) {
         return null;
     }
 
     const normalized = { ...goal };
+
+    normalized.name = typeof normalized.name === 'string' && normalized.name.trim() ? normalized.name.trim() : 'Untitled Goal';
+    normalized.startDate = normalized.startDate || new Date().toISOString().split('T')[0];
+    normalized.endDate = normalized.endDate || normalized.startDate;
 
     // Ensure weeks structure
     if (!normalized.weeks || typeof normalized.weeks !== 'object' || Array.isArray(normalized.weeks)) {
         normalized.weeks = {};
     }
 
-    // Ensure subgoals array
-    if (!Array.isArray(normalized.subgoals)) {
-        normalized.subgoals = [];
-    }
-
-    // Ensure each week has a tasks array
+    // Ensure each week has a tasks array and normalize tactics
     Object.keys(normalized.weeks).forEach(weekKey => {
-        if (!Array.isArray(normalized.weeks[weekKey].tasks)) {
-            normalized.weeks[weekKey].tasks = [];
+        const week = normalized.weeks[weekKey];
+        if (!week || typeof week !== 'object') {
+            delete normalized.weeks[weekKey];
+            return;
+        }
+        if (!Array.isArray(week.tasks)) {
+            week.tasks = [];
+        } else {
+            week.tasks = week.tasks.filter(t => t && typeof t === 'object' && t.id).map(t => ({
+                id: t.id,
+                text: t.text || '',
+                completed: Boolean(t.completed),
+                targetValue: t.targetValue != null && Number(t.targetValue) > 0 ? Number(t.targetValue) : null,
+                currentProgress: typeof t.currentProgress === 'number' ? t.currentProgress : 0,
+                unit: t.unit || '',
+                dailyLogs: normalizeDailyLogs(t.dailyLogs, normalized.startDate, normalized.endDate),
+                completionDate: t.completionDate || null,
+            }));
         }
     });
 
-    // Normalize each subgoal recursively
-    normalized.subgoals = normalized.subgoals.map(sg => normalizeGoal(sg)).filter(Boolean);
+    // Ensure subgoals array and normalize each subgoal recursively (scrubbing orphans/cycles)
+    if (!Array.isArray(normalized.subgoals)) {
+        normalized.subgoals = [];
+    } else {
+        normalized.subgoals = normalized.subgoals
+            .map(sg => normalizeGoal(sg))
+            .filter(sg => sg !== null && sg.id !== normalized.id);
+    }
 
     return normalized;
 };

@@ -23,7 +23,7 @@ import { initializeWeeks, rebuildParentWeeks, getWeeksBetweenDates } from '../ut
 export const loadAllGoals = async () => {
     const storedGoals = await StorageService.get(STORAGE_KEYS.GOALS, []);
 
-    return storedGoals.map(goal => {
+    return (Array.isArray(storedGoals) ? storedGoals : []).map(goal => {
         const normalized = normalizeGoal(goal);
         if (!normalized) return null;
         return {
@@ -41,14 +41,14 @@ export const loadAllGoals = async () => {
  * @returns {Promise<boolean>} Success flag
  */
 export const saveAllGoals = async (goals) => {
-    const goalsToSave = goals.map(({ progress, ...rest }) => rest);
+    const goalsToSave = (Array.isArray(goals) ? goals : []).map(({ progress, ...rest }) => rest);
     return StorageService.save(STORAGE_KEYS.GOALS, goalsToSave);
 };
 
 /**
- * Adds a new goal and saves. Uses createGoal() factory for validation.
+ * Adds a new goal atomically and saves. Uses createGoal() factory for validation.
  *
- * @param {Array} currentGoals - Current goals array
+ * @param {Array} currentGoals - Current in-memory goals array
  * @param {Object} goalData - { name, startDate, endDate }
  * @returns {Promise<Object>} { success, updatedGoals, newGoal? }
  */
@@ -59,9 +59,19 @@ export const addGoal = async (currentGoals, goalData) => {
             ...newGoal,
             progress: 0,
         };
-        const updated = [...currentGoals, withProgress];
-        await saveAllGoals(updated);
-        return { success: true, updatedGoals: updated, newGoal: withProgress };
+
+        const updated = await StorageService.mutate(STORAGE_KEYS.GOALS, (storedGoals = []) => {
+            const list = Array.isArray(storedGoals) ? storedGoals : [];
+            const goalsToSave = [...list, newGoal].map(({ progress, ...rest }) => rest);
+            return goalsToSave;
+        }, []);
+
+        const finalGoals = (updated || []).map(g => ({
+            ...g,
+            progress: calculateGoalProgress(g),
+        }));
+
+        return { success: true, updatedGoals: finalGoals, newGoal: withProgress };
     } catch (e) {
         console.error('GoalService.addGoal:', e.message);
         return { success: false, updatedGoals: currentGoals, error: e.message };
@@ -69,31 +79,99 @@ export const addGoal = async (currentGoals, goalData) => {
 };
 
 /**
- * Updates a single goal in the array and saves.
+ * Updates a single goal in the array atomically and saves.
  *
  * @param {Array} currentGoals - Current goals array
  * @param {Object} updatedGoal - The goal to update (matched by id)
  * @returns {Promise<Object>} { success, updatedGoals }
  */
 export const updateGoal = async (currentGoals, updatedGoal) => {
-    const updated = currentGoals.map(g =>
-        g.id === updatedGoal.id ? { ...updatedGoal, progress: calculateGoalProgress(updatedGoal) } : g
-    );
-    await saveAllGoals(updated);
-    return { success: true, updatedGoals: updated };
+    try {
+        const updated = await StorageService.mutate(STORAGE_KEYS.GOALS, (storedGoals = []) => {
+            const list = Array.isArray(storedGoals) ? storedGoals : [];
+            const cleanUpdatedGoal = { ...updatedGoal };
+            delete cleanUpdatedGoal.progress;
+
+            const idx = list.findIndex(g => g.id === updatedGoal.id);
+            if (idx !== -1) {
+                list[idx] = cleanUpdatedGoal;
+            } else {
+                list.push(cleanUpdatedGoal);
+            }
+            return list.map(({ progress, ...rest }) => rest);
+        }, []);
+
+        const finalGoals = (updated || []).map(g => ({
+            ...g,
+            progress: calculateGoalProgress(g),
+        }));
+
+        return { success: true, updatedGoals: finalGoals };
+    } catch (e) {
+        console.error('GoalService.updateGoal:', e.message);
+        return { success: false, updatedGoals: currentGoals, error: e.message };
+    }
 };
 
 /**
- * Deletes a goal by ID and saves.
+ * Deletes a goal by ID atomically and saves.
  *
  * @param {Array} currentGoals - Current goals array
  * @param {string} goalId - ID to delete
  * @returns {Promise<Object>} { success, updatedGoals }
  */
 export const deleteGoal = async (currentGoals, goalId) => {
-    const updated = currentGoals.filter(g => g.id !== goalId);
-    await saveAllGoals(updated);
-    return { success: true, updatedGoals: updated };
+    try {
+        const updated = await StorageService.mutate(STORAGE_KEYS.GOALS, (storedGoals = []) => {
+            const list = Array.isArray(storedGoals) ? storedGoals : [];
+            return list.filter(g => g.id !== goalId).map(({ progress, ...rest }) => rest);
+        }, []);
+
+        const finalGoals = (updated || []).map(g => ({
+            ...g,
+            progress: calculateGoalProgress(g),
+        }));
+
+        return { success: true, updatedGoals: finalGoals };
+    } catch (e) {
+        console.error('GoalService.deleteGoal:', e.message);
+        return { success: false, updatedGoals: currentGoals, error: e.message };
+    }
+};
+
+/**
+ * Atomically updates a specific tactic inside a goal/week in storage.
+ *
+ * @param {string} goalId - Target goal ID
+ * @param {string} weekKey - Target week key (e.g. 'week_0')
+ * @param {string} taskId - Target tactic ID
+ * @param {Function} updaterFn - Mutation function receiving the tactic object
+ * @returns {Promise<Object>} { success, updatedGoals }
+ */
+export const updateTacticInGoal = async (goalId, weekKey, taskId, updaterFn) => {
+    try {
+        const updated = await StorageService.mutate(STORAGE_KEYS.GOALS, (storedGoals = []) => {
+            const list = Array.isArray(storedGoals) ? storedGoals : [];
+            const goal = list.find(g => g.id === goalId);
+            if (goal && goal.weeks && goal.weeks[weekKey] && Array.isArray(goal.weeks[weekKey].tasks)) {
+                const tactic = goal.weeks[weekKey].tasks.find(t => t.id === taskId);
+                if (tactic) {
+                    updaterFn(tactic);
+                }
+            }
+            return list.map(({ progress, ...rest }) => rest);
+        }, []);
+
+        const finalGoals = (updated || []).map(g => ({
+            ...g,
+            progress: calculateGoalProgress(g),
+        }));
+
+        return { success: true, updatedGoals: finalGoals };
+    } catch (e) {
+        console.error('GoalService.updateTacticInGoal:', e.message);
+        return { success: false, error: e.message };
+    }
 };
 
 /**
@@ -104,7 +182,7 @@ export const deleteGoal = async (currentGoals, goalId) => {
  * @returns {Object|null} The goal or null
  */
 export const getGoalById = (goals, goalId) => {
-    return goals.find(g => g.id === goalId) || null;
+    return (goals || []).find(g => g.id === goalId) || null;
 };
 
 /**
@@ -129,12 +207,7 @@ export const ensureGoalWeeks = (goal) => {
 };
 
 /**
- * Adds a subgoal to a parent goal. Handles:
- *   1. Creating the subgoal with weeks
- *   2. Rebuilding parent weeks to exclude subgoal ranges
- *   3. Saving to storage
- *
- * Replaces the direct AsyncStorage logic in addSub.js.
+ * Adds a subgoal to a parent goal atomically.
  *
  * @param {string} parentGoalId - Parent goal ID
  * @param {Object} subGoalData - { name, startDate, endDate }
@@ -142,40 +215,52 @@ export const ensureGoalWeeks = (goal) => {
  */
 export const addSubGoal = async (parentGoalId, subGoalData) => {
     try {
-        const allGoals = await StorageService.get(STORAGE_KEYS.GOALS, []);
-        const parentIdx = allGoals.findIndex(g => g.id === parentGoalId);
+        let opError = null;
 
-        if (parentIdx === -1) {
-            return { success: false, error: 'Parent goal not found.' };
+        await StorageService.mutate(STORAGE_KEYS.GOALS, (storedGoals = []) => {
+            const list = Array.isArray(storedGoals) ? storedGoals : [];
+            const parentIdx = list.findIndex(g => g.id === parentGoalId);
+
+            if (parentIdx === -1) {
+                opError = 'Parent goal not found.';
+                return list;
+            }
+
+            const parent = list[parentIdx];
+            if (!parent.subgoals) parent.subgoals = [];
+
+            // Validate date range within parent
+            if (subGoalData.startDate < parent.startDate || subGoalData.endDate > parent.endDate) {
+                opError = 'Sub-goal dates must lie inside parent goal timeframe.';
+                return list;
+            }
+            if (subGoalData.endDate < subGoalData.startDate) {
+                opError = 'End date cannot be earlier than start date.';
+                return list;
+            }
+
+            // Check for overlap with existing subgoals
+            const hasOverlap = parent.subgoals.some(sg =>
+                !(subGoalData.endDate < sg.startDate || subGoalData.startDate > sg.endDate)
+            );
+            if (hasOverlap) {
+                opError = 'Sub-goal dates overlap with an existing sub-goal.';
+                return list;
+            }
+
+            const subGoal = createGoal(subGoalData);
+            subGoal.weeks = getWeeksBetweenDates(subGoalData.startDate, subGoalData.endDate);
+
+            parent.subgoals.push(subGoal);
+            parent.weeks = rebuildParentWeeks(parent);
+
+            list[parentIdx] = parent;
+            return list.map(({ progress, ...rest }) => rest);
+        }, []);
+
+        if (opError) {
+            return { success: false, error: opError };
         }
-
-        const parent = allGoals[parentIdx];
-        if (!parent.subgoals) parent.subgoals = [];
-
-        // Validate date range within parent
-        if (subGoalData.startDate < parent.startDate || subGoalData.endDate > parent.endDate) {
-            return { success: false, error: 'Sub-goal dates must lie inside parent goal timeframe.' };
-        }
-        if (subGoalData.endDate < subGoalData.startDate) {
-            return { success: false, error: 'End date cannot be earlier than start date.' };
-        }
-
-        // Check for overlap with existing subgoals
-        const hasOverlap = parent.subgoals.some(sg =>
-            !(subGoalData.endDate < sg.startDate || subGoalData.startDate > sg.endDate)
-        );
-        if (hasOverlap) {
-            return { success: false, error: 'Sub-goal dates overlap with an existing sub-goal.' };
-        }
-
-        const subGoal = createGoal(subGoalData);
-        subGoal.weeks = getWeeksBetweenDates(subGoalData.startDate, subGoalData.endDate);
-
-        parent.subgoals.push(subGoal);
-        parent.weeks = rebuildParentWeeks(parent);
-
-        allGoals[parentIdx] = parent;
-        await StorageService.save(STORAGE_KEYS.GOALS, allGoals);
 
         return { success: true };
     } catch (e) {
@@ -185,9 +270,7 @@ export const addSubGoal = async (parentGoalId, subGoalData) => {
 };
 
 /**
- * Updates a subgoal within its parent. Handles saving directly to storage.
- *
- * Replaces the direct AsyncStorage logic in subdetail.js → saveUpdates().
+ * Updates a subgoal within its parent atomically.
  *
  * @param {string} parentGoalId - Parent goal ID
  * @param {Object} updatedSubGoal - Updated subgoal object
@@ -195,17 +278,21 @@ export const addSubGoal = async (parentGoalId, subGoalData) => {
  */
 export const updateSubGoal = async (parentGoalId, updatedSubGoal) => {
     try {
-        const allGoals = await StorageService.get(STORAGE_KEYS.GOALS, []);
-        const parentIdx = allGoals.findIndex(g => g.id === parentGoalId);
-        if (parentIdx === -1) return false;
+        let success = false;
+        await StorageService.mutate(STORAGE_KEYS.GOALS, (storedGoals = []) => {
+            const list = Array.isArray(storedGoals) ? storedGoals : [];
+            const parentIdx = list.findIndex(g => g.id === parentGoalId);
+            if (parentIdx === -1) return list;
 
-        const subIdx = allGoals[parentIdx].subgoals.findIndex(s => s.id === updatedSubGoal.id);
-        if (subIdx === -1) return false;
+            const subIdx = (list[parentIdx].subgoals || []).findIndex(s => s.id === updatedSubGoal.id);
+            if (subIdx === -1) return list;
 
-        allGoals[parentIdx].subgoals[subIdx] = updatedSubGoal;
-        await StorageService.save(STORAGE_KEYS.GOALS, allGoals);
+            list[parentIdx].subgoals[subIdx] = updatedSubGoal;
+            success = true;
+            return list.map(({ progress, ...rest }) => rest);
+        }, []);
 
-        return true;
+        return success;
     } catch (e) {
         console.error('GoalService.updateSubGoal:', e);
         return false;

@@ -29,6 +29,8 @@ import AddTacticModal from '../../../components/goals/AddTacticModal';
 import LogProgressModal from '../../../components/goals/LogProgressModal';
 import AppModal from '../../../components/common/AppModal';
 
+import { ErrorBoundary } from '../../../components/common/ErrorBoundary';
+
 /**
  * Deep-clones a goal object to prevent mutation of nested weeks/tasks.
  * JSON round-trip is safe here since goals only contain serializable data.
@@ -36,7 +38,8 @@ import AppModal from '../../../components/common/AppModal';
 const deepCloneGoal = (goal) => JSON.parse(JSON.stringify(goal));
 
 const GoalDetailScreen = () => {
-  const { goalId } = useLocalSearchParams();
+  const params = useLocalSearchParams();
+  const goalId = params.goalId || params.id;
   const router = useRouter();
   const { goals, updateGoal, getGoalById } = useGoals();
 
@@ -63,7 +66,7 @@ const GoalDetailScreen = () => {
         return;
       }
 
-      const currentGoal = getGoalById(goalId);
+      const currentGoal = getGoalById(String(goalId));
 
       if (currentGoal) {
         const { goal: normalized, needsUpdate } = ensureGoalWeeks(currentGoal);
@@ -73,6 +76,7 @@ const GoalDetailScreen = () => {
       } else if (goals.length > 0) {
         Alert.alert('Error', 'Goal not found.');
         if (router.canGoBack()) router.back();
+        else router.replace('/goals');
       }
     }, [goalId, goals, getGoalById, updateGoal, router])
   );
@@ -242,7 +246,11 @@ const GoalDetailScreen = () => {
             if (result.success) {
               await saveAllGoals(result.updatedGoals);
               setIsConvertModalVisible(false);
-              router.replace('/goals');
+              if (router.canGoBack()) {
+                router.back();
+              } else {
+                router.replace('/goals');
+              }
             } else {
               Alert.alert('Error', result.error || 'Could not convert.');
             }
@@ -423,4 +431,10 @@ const styles = StyleSheet.create({
   parentGoalOptionTextSelected: { color: '#fff', fontWeight: 'bold' },
 });
 
-export default GoalDetailScreen;
+const GoalDetailScreenWithBoundary = (props) => (
+  <ErrorBoundary>
+    <GoalDetailScreen {...props} />
+  </ErrorBoundary>
+);
+
+export default GoalDetailScreenWithBoundary;
