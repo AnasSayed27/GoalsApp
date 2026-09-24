@@ -116,17 +116,28 @@ const TasksScreen = () => {
           <Ionicons name={isTacticsExpanded ? 'chevron-up' : 'chevron-down'} size={22} color="#666" />
         </TouchableOpacity>
 
-        {isTacticsExpanded && todayTactics.map(tactic => (
-          <TacticsDailyCard
-            key={tactic.id}
-            tactic={tactic}
-            onToggle={handleToggleGoalTactic}
-            onUpdateProgress={handleUpdateGoalTacticProgress}
-          />
-        ))}
+        {isTacticsExpanded && (
+          <>
+            <ProgressSection
+              completedDuration={tacticStats.completed}
+              totalDuration={tacticStats.total}
+              progress={tacticStats.progress}
+              label="Today's Tactics Pace"
+              unit="points"
+            />
+            {todayTactics.map(tactic => (
+              <TacticsDailyCard
+                key={tactic.id}
+                tactic={tactic}
+                onToggle={handleToggleGoalTactic}
+                onUpdateProgress={handleUpdateGoalTacticProgress}
+              />
+            ))}
+          </>
+        )}
       </View>
     );
-  }, [todayTactics, isTacticsExpanded]);
+  }, [todayTactics, isTacticsExpanded, tacticStats.completed, tacticStats.total, tacticStats.progress]);
 
   const renderHeader = useCallback(() => (
     <>
@@ -148,11 +159,11 @@ const TasksScreen = () => {
       <Text style={styles.header}>Daily Dashboard</Text>
 
       <ProgressSection
-        completedDuration={tacticStats.completed}
-        totalDuration={tacticStats.total}
-        progress={tacticStats.progress}
-        label="Today's Tactics Progress"
-        unit="points"
+        completedDuration={stats.completedDuration}
+        totalDuration={stats.totalDuration}
+        progress={stats.progress}
+        label="Today's Tasks Progress"
+        unit="hours"
       />
 
       <TaskInput

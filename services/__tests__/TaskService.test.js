@@ -70,4 +70,40 @@ describe('TaskService', () => {
         expect(stats.completedDuration).toBe(1.5);
         expect(stats.progress).toBe(0.375);
     });
+
+    test('checkAndResetDailyTasks automatically unticks tasks on a new day', async () => {
+        // Seed storage with completed tasks from yesterday
+        const tasks = [
+            { id: 't1', name: 'Morning Run', duration: 1, completed: true },
+            { id: 't2', name: 'Read Book', duration: 1, completed: true },
+        ];
+        await StorageService.save(STORAGE_KEYS.TASKS, tasks);
+        await StorageService.save(STORAGE_KEYS.LAST_TASKS_RESET_DATE, '2026-09-23');
+
+        // New day arrives: 2026-09-24
+        const resetTasks = await TaskService.checkAndResetDailyTasks('2026-09-24');
+        expect(resetTasks).toHaveLength(2);
+        expect(resetTasks[0].completed).toBe(false);
+        expect(resetTasks[1].completed).toBe(false);
+
+        // Verify persisted state in storage
+        const storedTasks = await StorageService.get(STORAGE_KEYS.TASKS, []);
+        expect(storedTasks[0].completed).toBe(false);
+        expect(storedTasks[1].completed).toBe(false);
+
+        const newResetDate = await StorageService.get(STORAGE_KEYS.LAST_TASKS_RESET_DATE);
+        expect(newResetDate).toBe('2026-09-24');
+    });
+
+    test('checkAndResetDailyTasks preserves completion on the same day', async () => {
+        const tasks = [
+            { id: 't1', name: 'Task Completed Today', duration: 1, completed: true },
+        ];
+        await StorageService.save(STORAGE_KEYS.TASKS, tasks);
+        await StorageService.save(STORAGE_KEYS.LAST_TASKS_RESET_DATE, '2026-09-24');
+
+        // Same day check
+        const resultTasks = await TaskService.checkAndResetDailyTasks('2026-09-24');
+        expect(resultTasks[0].completed).toBe(true);
+    });
 });

@@ -7,6 +7,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { Alert } from 'react-native';
+import { useFocusEffect } from 'expo-router';
 import * as TaskService from '../services/TaskService';
 
 export const useTasks = () => {
@@ -23,6 +24,12 @@ export const useTasks = () => {
     useEffect(() => {
         loadTasks();
     }, [loadTasks]);
+
+    useFocusEffect(
+        useCallback(() => {
+            loadTasks();
+        }, [loadTasks])
+    );
 
     const addTask = useCallback(async (name, duration) => {
         if (!name || duration === undefined) {

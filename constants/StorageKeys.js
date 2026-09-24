@@ -9,4 +9,6 @@ export const STORAGE_KEYS = {
     AUTO_BACKUP_ENABLED: '@autoBackupEnabled',
     AUTO_BACKUP_DIR_URI: '@autoBackupDirUri',
     LAST_AUTO_BACKUP_TIME: '@lastAutoBackupTime',
+    // Daily task auto-reset key
+    LAST_TASKS_RESET_DATE: '@lastTasksResetDate',
 };

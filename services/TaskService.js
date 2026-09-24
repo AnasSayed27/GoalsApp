@@ -9,15 +9,45 @@ import { StorageService } from './StorageService';
 import { STORAGE_KEYS } from '../constants/StorageKeys';
 import { createTask, normalizeTask } from '../models/Task';
 import { calculateDailyTaskStats } from '../utils/progressCalculator';
+import { getTodayString } from '../utils/dateHelpers';
 
 /**
- * Loads all tasks from storage, normalizes them.
+ * Checks if a new day has arrived and resets task completion to false.
+ *
+ * @param {string} [today=getTodayString()] - Today's date string (YYYY-MM-DD)
+ * @returns {Promise<Array>} Array of normalized tasks after daily check
+ */
+export const checkAndResetDailyTasks = async (today = getTodayString()) => {
+    const lastResetDate = await StorageService.get(STORAGE_KEYS.LAST_TASKS_RESET_DATE, null);
+    let tasks = await StorageService.get(STORAGE_KEYS.TASKS, []);
+    tasks = tasks.map(normalizeTask).filter(Boolean);
+
+    if (!lastResetDate) {
+        // First initialization of daily tracking
+        await StorageService.save(STORAGE_KEYS.LAST_TASKS_RESET_DATE, today);
+        return tasks;
+    }
+
+    if (lastResetDate !== today) {
+        // A new day has started — automatically untick all completed tasks
+        const hasCompleted = tasks.some(t => t.completed);
+        if (hasCompleted) {
+            tasks = tasks.map(t => ({ ...t, completed: false }));
+            await StorageService.save(STORAGE_KEYS.TASKS, tasks);
+        }
+        await StorageService.save(STORAGE_KEYS.LAST_TASKS_RESET_DATE, today);
+    }
+
+    return tasks;
+};
+
+/**
+ * Loads all tasks from storage, normalizes them, and auto-resets if a new day.
  *
  * @returns {Promise<Array>} Array of normalized task objects
  */
 export const loadAllTasks = async () => {
-    const stored = await StorageService.get(STORAGE_KEYS.TASKS, []);
-    return stored.map(normalizeTask).filter(Boolean);
+    return checkAndResetDailyTasks();
 };
 
 /**
